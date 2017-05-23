@@ -13,23 +13,25 @@ import (
 )
 
 var inReader = bufio.NewReader(os.Stdin)
-var token = ""
+var token = "butt"
 
 func main() {
 	token = "test"
-	req, err := NewMultipart("http://postman-echo.com/post?param1=eyy",
+	req, err := NewMultipart("http://development.gamejolt.com/service-api/v1-dev/games/8853/files/add",
 		map[string]string{
-			"file":  "test.txt",
-			"file2": "test2.txt",
+			"file": "test.txt",
+			// "file2": "test2.txt",
 		},
 		url.Values(map[string][]string{
-			"param2": []string{"eyy2"},
-			"array1": []string{"element1", "element2"},
+			"checksum":   []string{"any"},
+			"size":       []string{"51"},
+			"auth_token": []string{"butt"},
+			// "array1": []string{"element1", "element2"},
 		}),
 		url.Values(map[string][]string{
-			"post1":  []string{"eyy1"},
-			"post2":  []string{"eyy2"},
-			"array1": []string{"element1", "element2"},
+		// "post1":  []string{"eyy1"},
+		// "post2":  []string{"eyy2"},
+		// "array1": []string{"element1", "element2"},
 		}))
 
 	if err != nil {
