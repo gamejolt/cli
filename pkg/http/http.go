@@ -1,4 +1,4 @@
-package main
+package http
 
 import (
 	"bytes"
@@ -12,28 +12,51 @@ import (
 	"path/filepath"
 )
 
-var client = &http.Client{}
+// SimpleClient is a simplified http client
+type SimpleClient struct {
 
-func NewRequest(method, urlStr string, body io.Reader) (*http.Request, error) {
-	token, err := GetAuthToken()
-	if err != nil {
-		return nil, err
-	}
+	// Base is the base to use for all urls. If empty, will use the given urls as is.
+	Base string
 
-	req, err := http.NewRequest(method, urlStr, body)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Authentication", token)
-	req.Header.Set("User-Agent", "Jolt/1.0.0")
-	return req, nil
+	// NewRequest allows to customize which http.Request the simple client will use.
+	NewRequest func(method, urlStr string, body io.Reader) (*http.Request, error)
 }
 
-func NewGet(urlStr string, params url.Values) (*http.Request, error) {
-	urlData, err := url.Parse(urlStr)
+// NewSimpleClient creates a new default client
+func NewSimpleClient() *SimpleClient {
+	client := &SimpleClient{
+		Base: "",
+		NewRequest: func(method, urlStr string, body io.Reader) (*http.Request, error) {
+			return http.NewRequest(method, urlStr, body)
+		},
+	}
+	return client
+}
+
+func (c *SimpleClient) send(req *http.Request) (*http.Request, *http.Response, error) {
+	res, err := http.DefaultClient.Do(req)
+	return req, res, err
+}
+
+func (c *SimpleClient) getURL(urlStr string) (*url.URL, error) {
+	base, err := url.Parse(c.Base)
 	if err != nil {
 		return nil, err
+	}
+
+	u, err := url.Parse(urlStr)
+	if err != nil {
+		return nil, err
+	}
+
+	return base.ResolveReference(u), nil
+}
+
+// Get does an http get
+func (c *SimpleClient) Get(urlStr string, params url.Values) (*http.Request, *http.Response, error) {
+	urlData, err := c.getURL(urlStr)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	query := urlData.Query()
@@ -50,13 +73,19 @@ func NewGet(urlStr string, params url.Values) (*http.Request, error) {
 	urlData.RawQuery = query.Encode()
 	urlStr = urlData.String()
 
-	return NewRequest("GET", urlStr, nil)
+	req, err := c.NewRequest("GET", urlStr, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return c.send(req)
 }
 
-func NewPost(urlStr string, get url.Values, post interface{}) (*http.Request, error) {
-	urlData, err := url.Parse(urlStr)
+// Post does an http post of type application/json
+func (c *SimpleClient) Post(urlStr string, get url.Values, post interface{}) (*http.Request, *http.Response, error) {
+	urlData, err := c.getURL(urlStr)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	query := urlData.Query()
@@ -75,16 +104,16 @@ func NewPost(urlStr string, get url.Values, post interface{}) (*http.Request, er
 
 	jsonBytes, err := json.Marshal(post)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	req, err := NewRequest("POST", urlStr, bytes.NewBuffer(jsonBytes))
+	req, err := c.NewRequest("POST", urlStr, bytes.NewBuffer(jsonBytes))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	return req, nil
+	return c.send(req)
 }
 
 type multipartFileEntry struct {
@@ -93,10 +122,11 @@ type multipartFileEntry struct {
 	file  *os.File
 }
 
-func NewMultipart(urlStr string, files map[string]string, get, post url.Values) (*http.Request, error) {
-	urlData, err := url.Parse(urlStr)
+// Multipart does a multipart file upload request of type multipart/form-data
+func (c *SimpleClient) Multipart(urlStr string, files map[string]string, get, post url.Values) (*http.Request, *http.Response, error) {
+	urlData, err := url.Parse(c.Base + urlStr)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	query := urlData.Query()
@@ -117,7 +147,7 @@ func NewMultipart(urlStr string, files map[string]string, get, post url.Values) 
 	for fileParam, path := range files {
 		fileHandle, err := os.Open(path)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		fileEntries = append(fileEntries, multipartFileEntry{
 			param: fileParam,
@@ -137,23 +167,19 @@ func NewMultipart(urlStr string, files map[string]string, get, post url.Values) 
 		defer multipartWriter.Close()
 
 		for _, fileEntry := range fileEntries {
-			log.Println("1")
 			log.Println(filepath.Base(fileEntry.path))
 			fileField, err := multipartWriter.CreateFormFile(fileEntry.param, filepath.Base(fileEntry.path))
 			if err != nil {
 				log.Fatal(err)
 				return
 			}
-			log.Println("wat")
 
-			log.Println("2")
 			_, err = io.Copy(fileField, fileEntry.file)
 			if err != nil {
 				return
 			}
 		}
 
-		log.Println("3")
 		for key, values := range post {
 			if len(values) == 1 {
 				if err := multipartWriter.WriteField(key, values[0]); err != nil {
@@ -170,11 +196,11 @@ func NewMultipart(urlStr string, files map[string]string, get, post url.Values) 
 		}
 	}()
 
-	log.Println("4")
-	req, err := NewRequest("POST", urlStr, reqReader)
+	req, err := c.NewRequest("POST", urlStr, reqReader)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	req.Header.Set("Content-Type", multipartWriter.FormDataContentType())
-	return req, nil
+
+	return c.send(req)
 }
