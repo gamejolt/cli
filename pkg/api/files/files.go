@@ -2,11 +2,10 @@ package files
 
 import (
 	"encoding/json"
-	"log"
-	"net/http/httputil"
 	"net/url"
 	"strconv"
 
+	"github.com/gamejolt/cli/pkg/api/errors"
 	"github.com/gamejolt/cli/pkg/api/models"
 	cliHttp "github.com/gamejolt/cli/pkg/http"
 	semver "gopkg.in/blang/semver.v3"
@@ -18,6 +17,7 @@ type AddResult struct {
 	FileID int               `json:"file_id,omitempty"` // Returned for partial/in progress file uploads
 	Build  *models.GameBuild `json:"build,omitempty"`   // Only returned once when the file has been fully uploaded
 	Start  int64             `json:"start,omitempty"`
+	Error  *models.Error     `json:"error,omitempty"`
 }
 
 func formatBool(b bool) string {
@@ -44,18 +44,14 @@ func Add(client *cliHttp.SimpleClient, gameID, packageID int, releaseVersion *se
 	}
 	defer res.Body.Close()
 
-	bytes, err := httputil.DumpResponse(res, true)
-	log.Println(string(bytes))
-
-	if res.StatusCode == 404 || res.StatusCode == 403 {
-		return nil, nil
-	}
-
 	decoder := json.NewDecoder(res.Body)
 	result := &AddResult{}
 	if err = decoder.Decode(result); err != nil {
 		return nil, err
 	}
 
+	if result.Error != nil {
+		return nil, errors.New(result.Error)
+	}
 	return result, nil
 }

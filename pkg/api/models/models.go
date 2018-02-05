@@ -1,5 +1,15 @@
 package models
 
+// Error is an error model. It is returned for any error that may occur with api calls.
+type Error struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+
+	// Optional fields
+	Fields    []string `json:"fields,omitempty"`     // Returned for invalid fields error
+	HTTPError *int     `json:"http_error,omitempty"` // Returned for any other unknown errors. This is just repeating the http status code
+}
+
 // User is a user model
 type User struct {
 	ID          int    `json:"id"`

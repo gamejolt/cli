@@ -4,9 +4,16 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/gamejolt/cli/pkg/api/errors"
 	"github.com/gamejolt/cli/pkg/api/models"
 	cliHttp "github.com/gamejolt/cli/pkg/http"
 )
+
+// GetResult is the payload from the `/packages/:id` endpoint
+type GetResult struct {
+	Package *models.GamePackage `json:"package"`
+	Error   *models.Error       `json:"error,omitempty"`
+}
 
 // Get sends a new /packages/:packageId request
 func Get(client *cliHttp.SimpleClient, packageID int) (*models.GamePackage, error) {
@@ -16,15 +23,14 @@ func Get(client *cliHttp.SimpleClient, packageID int) (*models.GamePackage, erro
 	}
 	defer res.Body.Close()
 
-	if res.StatusCode == 404 || res.StatusCode == 403 {
-		return nil, nil
-	}
-
 	decoder := json.NewDecoder(res.Body)
-	result := &models.GamePackage{}
+	result := &GetResult{}
 	if err = decoder.Decode(result); err != nil {
 		return nil, err
 	}
 
-	return result, nil
+	if result.Error != nil {
+		return nil, errors.New(result.Error)
+	}
+	return result.Package, nil
 }

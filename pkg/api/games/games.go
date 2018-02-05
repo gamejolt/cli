@@ -4,9 +4,22 @@ import (
 	"encoding/json"
 	"strconv"
 
+	"github.com/gamejolt/cli/pkg/api/errors"
 	"github.com/gamejolt/cli/pkg/api/models"
 	cliHttp "github.com/gamejolt/cli/pkg/http"
 )
+
+// GetResult is the payload from the `/games/:id` endpoint
+type GetResult struct {
+	Game  *models.Game  `json:"game"`
+	Error *models.Error `json:"error,omitempty"`
+}
+
+// ListResult is the payload from the `/games` endpoint
+type ListResult struct {
+	Games *Games        `json:"games"`
+	Error *models.Error `json:"error,omitempty"`
+}
 
 // Games is a list of games as returned by the /games endpoint
 type Games struct {
@@ -24,17 +37,16 @@ func Get(client *cliHttp.SimpleClient, gameID int) (*models.Game, error) {
 	}
 	defer res.Body.Close()
 
-	if res.StatusCode == 404 || res.StatusCode == 403 {
-		return nil, nil
-	}
-
 	decoder := json.NewDecoder(res.Body)
-	result := &models.Game{}
+	result := &GetResult{}
 	if err = decoder.Decode(result); err != nil {
 		return nil, err
 	}
 
-	return result, nil
+	if result.Error != nil {
+		return nil, errors.New(result.Error)
+	}
+	return result.Game, nil
 }
 
 // List sends a new /games request
@@ -46,10 +58,13 @@ func List(client *cliHttp.SimpleClient) (*Games, error) {
 	defer res.Body.Close()
 
 	decoder := json.NewDecoder(res.Body)
-	result := &Games{}
+	result := &ListResult{}
 	if err = decoder.Decode(result); err != nil {
 		return nil, err
 	}
 
-	return result, nil
+	if result.Error != nil {
+		return nil, errors.New(result.Error)
+	}
+	return result.Games, nil
 }
