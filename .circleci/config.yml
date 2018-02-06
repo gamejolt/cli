@@ -1,0 +1,50 @@
+version: 2
+jobs:
+  build:
+    working_directory: /go/src/github.com/gamejolt/cli
+    docker:
+      - image: circleci/golang:1.9.3
+    steps:
+      - checkout
+
+      - run:
+          name: Create artifact directories
+          command: |
+            mkdir -p linux
+            mkdir -p osx
+            mkdir -p window
+
+      - run:
+          name: Build Linux
+          command: |
+            CGO_ENABLED=0 GOOS=linux GOARCH=386 go get -v -d ./...
+            CGO_ENABLED=0 GOOS=linux GOARCH=386 sh ./build/prod.sh
+            mv ./gjpush ./linux/gjpush
+
+      - run:
+          name: Build OS X
+          command: |
+            CGO_ENABLED=0 GOOS=darwin GOARCH=386 go get -v -d ./...
+            CGO_ENABLED=0 GOOS=darwin GOARCH=386 sh ./build/prod.sh
+            mv ./gjpush ./osx/gjpush
+
+      - run:
+          name: Build Windows
+          command: |
+            CGO_ENABLED=0 GOOS=windows GOARCH=386 go get -v -d ./...
+            CGO_ENABLED=0 GOOS=windows GOARCH=386 sh ./build/prod.sh
+            mv ./gjpush ./windows/gjpush.exe
+
+      - run:
+          name: List artifacts
+          command: |
+            ls -lah linux
+            ls -lah osx
+            ls -lah windows
+
+      - store_artifacts:
+          path: "linux/gjpush"
+      - store_artifacts:
+          path: "osx/gjpush"
+      - store_artifacts:
+          path: "windows/gjpush.exe"
