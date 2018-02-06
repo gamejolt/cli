@@ -4,6 +4,8 @@ import (
 	"io"
 	"net/http"
 
+	"gopkg.in/cheggaaa/pb.v1"
+
 	"github.com/gamejolt/cli/config"
 	"github.com/gamejolt/cli/pkg/api/files"
 	"github.com/gamejolt/cli/pkg/api/games"
@@ -68,7 +70,12 @@ func (c *Client) GamePackage(packageID int, options *packages.GetOptions) (*mode
 	return packages.Get(c.client, packageID, options)
 }
 
-// FileAdd does a /files/add call
-func (c *Client) FileAdd(gameID, packageID int, releaseVersion *semver.Version, isDownloadable bool, size int64, checksum string, forceRestart bool, filepath string) (*files.AddResult, error) {
-	return files.Add(c.client, gameID, packageID, releaseVersion, isDownloadable, size, checksum, forceRestart, filepath)
+// FileStatus does a GET /files/add call
+func (c *Client) FileStatus(gameID int, size int64, checksum string) (*files.GetResult, error) {
+	return files.Get(c.client, gameID, size, checksum)
+}
+
+// FileAdd does a POST /files/add call
+func (c *Client) FileAdd(gameID, packageID int, releaseVersion *semver.Version, isDownloadable bool, size int64, checksum string, forceRestart bool, filepath string, startByte int64, bar *pb.ProgressBar) (*files.AddResult, error) {
+	return files.Add(c.client, gameID, packageID, releaseVersion, isDownloadable, size, checksum, forceRestart, filepath, startByte, bar)
 }

@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"crypto/md5"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -12,15 +11,16 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/gamejolt/cli/pkg/api/packages"
-
 	"github.com/gamejolt/cli/pkg/api"
+	"github.com/gamejolt/cli/pkg/api/files"
 	"github.com/gamejolt/cli/pkg/api/models"
+	"github.com/gamejolt/cli/pkg/api/packages"
 	"github.com/gamejolt/cli/pkg/fs"
 	"github.com/gamejolt/cli/pkg/project"
 	"github.com/gamejolt/cli/pkg/ui"
 
 	"gopkg.in/blang/semver.v3"
+	"gopkg.in/cheggaaa/pb.v1"
 	"gopkg.in/jessevdk/go-flags.v1"
 )
 
@@ -87,17 +87,40 @@ func main() {
 		}
 	}
 
-	apiClient, user, game, gamePackage, releaseSemver, filepath, err := GetParams(opts.Token, gameID, packageID, opts.ReleaseVersion, opts.Args.File)
+	apiClient, game, gamePackage, releaseSemver, filepath, err := GetParams(opts.Token, gameID, packageID, opts.ReleaseVersion, opts.Args.File)
 	if err != nil {
 		ErrorAndExit("%s\n", err.Error())
 	}
 
-	err = Upload(apiClient, game, gamePackage, releaseSemver, opts.IsBrowser, filepath)
+	filesize, err := fs.Filesize(filepath)
+	if err != nil {
+		ErrorAndExit("Failed to determine filesize for some reason\n")
+	}
+
+	checksum, err := MD5File(filepath)
+	if err != nil {
+		ErrorAndExit("Failed to calculate checksum for the file.\nHas it changed while I was running?\n")
+	}
+
+	fileStatus, err := apiClient.FileStatus(game.ID, filesize, checksum)
 	if err != nil {
 		ErrorAndExit("%s\n", err.Error())
 	}
 
-	fmt.Printf("Token: %s\nUser ID: %d\nGame ID: %d\nPackage ID: %d\nRelease Version: %s\nFile: %s\n", apiClient.Token(), user.ID, game.ID, gamePackage.ID, releaseSemver.String(), filepath)
+	if fileStatus.Status == "new" {
+		ui.Info("Starting a new upload ...\n")
+	} else if fileStatus.Status == "partial" {
+		ui.Info("Resuming the upload (File ID: %d) ...\n", fileStatus.FileID)
+	} else if fileStatus.Status == "error" {
+		ui.Warn("There was an issue with the previous upload chunk, we have to start over :(\n")
+		ui.Info("Starting a new upload ...\n")
+	}
+
+	err = Upload(apiClient, game, gamePackage, releaseSemver, opts.IsBrowser, filepath, filesize, checksum, fileStatus.Start)
+	if err != nil {
+		ErrorAndExit("%s\n", err.Error())
+	}
+	ui.Success("Upload complete :D\n")
 }
 
 // PrintVersion prints the version and exits the program
@@ -124,10 +147,10 @@ func ErrorAndExit(str string, a ...interface{}) {
 }
 
 // GetParams gets the parsed parameters, prompts for missing ones, validates, and returns them if they are valid
-func GetParams(token string, gameID, packageID int, releaseVersion, path string) (*api.Client, *models.User, *models.Game, *models.GamePackage, *semver.Version, string, error) {
+func GetParams(token string, gameID, packageID int, releaseVersion, path string) (*api.Client, *models.Game, *models.GamePackage, *semver.Version, string, error) {
 	apiClient, user, err := Authenticate(token)
 	if err != nil {
-		return nil, nil, nil, nil, nil, "", err
+		return nil, nil, nil, nil, "", err
 	}
 
 	token = apiClient.Token()
@@ -135,17 +158,17 @@ func GetParams(token string, gameID, packageID int, releaseVersion, path string)
 	ui.Success("Hello, %s\n\n", user.Username)
 	game, err := GetGame(apiClient, gameID)
 	if err != nil {
-		return nil, nil, nil, nil, nil, "", err
+		return nil, nil, nil, nil, "", err
 	}
 
 	gamePackage, err := GetGamePackage(apiClient, game.ID, packageID)
 	if err != nil {
-		return nil, nil, nil, nil, nil, "", err
+		return nil, nil, nil, nil, "", err
 	}
 
 	releaseSemver, err := GetGameRelease(apiClient, releaseVersion)
 	if err != nil {
-		return nil, nil, nil, nil, nil, "", err
+		return nil, nil, nil, nil, "", err
 	}
 
 	file, err := os.Open(path)
@@ -155,11 +178,11 @@ func GetParams(token string, gameID, packageID int, releaseVersion, path string)
 		} else if os.IsPermission(err) {
 			err = errors.New("No permission to read the file")
 		}
-		return nil, nil, nil, nil, nil, "", err
+		return nil, nil, nil, nil, "", err
 	}
 	defer file.Close()
 
-	return apiClient, user, game, gamePackage, releaseSemver, path, nil
+	return apiClient, game, gamePackage, releaseSemver, path, nil
 }
 
 // Authenticate uses the given token to authenticate the user.
@@ -256,29 +279,46 @@ func GetGameRelease(apiClient *api.Client, releaseVersion string) (*semver.Versi
 }
 
 // Upload uploads a file to a game
-func Upload(apiClient *api.Client, game *models.Game, gamePackage *models.GamePackage, releaseSemver *semver.Version, browserBuild bool, filepath string) error {
-	filesize, err := fs.Filesize(filepath)
+func Upload(apiClient *api.Client, game *models.Game, gamePackage *models.GamePackage, releaseSemver *semver.Version, browserBuild bool, filepath string, filesize int64, checksum string, startByte int64) error {
+	// Create a new progress bar that starts from the given start byte
+	bar := pb.New64(filesize).SetUnits(pb.U_BYTES)
+	bar.Add64(startByte)
+
+	// The bar will be set to visible by the apiClient as soon as it knows it wouldn't print any errors right off the bat
+	bar.ShowBar = false
+	bar.Start()
+	defer bar.Finish()
+
+	for {
+		result, err := uploadChunk(apiClient, game, gamePackage, releaseSemver, browserBuild, filepath, filesize, checksum, startByte, bar)
+		if err != nil {
+			return err
+		}
+
+		if result.Status == "complete" {
+			return nil
+		}
+
+		// Get next chunk
+		startByte = result.Start
+	}
+}
+
+func uploadChunk(apiClient *api.Client, game *models.Game, gamePackage *models.GamePackage, releaseSemver *semver.Version, browserBuild bool, filepath string, filesize int64, checksum string, startByte int64, bar *pb.ProgressBar) (*files.AddResult, error) {
+	result, err := apiClient.FileAdd(game.ID, gamePackage.ID, releaseSemver, !browserBuild, filesize, checksum, false, filepath, startByte, bar)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	checksum, err := MD5File(filepath)
-	if err != nil {
-		return err
+	if result.Status == "complete" {
+		return result, nil
 	}
 
-	result, err := apiClient.FileAdd(game.ID, gamePackage.ID, releaseSemver, !browserBuild, filesize, checksum, false, filepath)
-	if err != nil {
-		return err
+	if result.Status == "error" || result.Start <= startByte {
+		return nil, errors.New("Uh oh, something went wrong! Did the file change while I was uploading? :(")
 	}
 
-	if result == nil {
-		return errors.New("Failed to upload file")
-	}
-
-	bytes, _ := json.Marshal(result)
-	fmt.Println("Uploaded file:", string(bytes))
-	return nil
+	return result, nil
 }
 
 // MD5File calculates a file's MD5. This is a blocking operation

@@ -14,4 +14,7 @@ var (
 
 	// Info is the color for prompts
 	Info = color.New(color.FgHiWhite, color.Bold).PrintfFunc()
+
+	// Warn is the color for warnings
+	Warn = color.New(color.FgHiYellow, color.Bold).PrintfFunc()
 )
