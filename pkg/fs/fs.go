@@ -1,15 +1,10 @@
 package fs
 
 import (
-	"crypto/md5"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
 	"strings"
-
-	"github.com/gamejolt/cli/pkg/concurrency"
-	"github.com/gamejolt/cli/pkg/io"
 )
 
 // Filesize returns the filesize of a given file
@@ -47,22 +42,4 @@ func EnsureFolder(dir string) error {
 	}
 
 	return os.MkdirAll(dir, 0755)
-}
-
-// ResumableMD5File calculates the md5 of a file in a resumable way
-func ResumableMD5File(r concurrency.Resumer, path string) (string, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return "", err
-	}
-	defer file.Close()
-
-	hash := md5.New()
-	if _, err := io.ResumableCopy(r, hash, file, nil); err != nil {
-		return "", err
-	}
-
-	var result []byte
-	result = hash.Sum(result)
-	return hex.EncodeToString(result), nil
 }

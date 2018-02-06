@@ -4,8 +4,6 @@ import (
 	"io"
 	"net/http"
 
-	"gopkg.in/cheggaaa/pb.v1"
-
 	"github.com/gamejolt/cli/config"
 	"github.com/gamejolt/cli/pkg/api/files"
 	"github.com/gamejolt/cli/pkg/api/games"
@@ -14,7 +12,9 @@ import (
 	"github.com/gamejolt/cli/pkg/api/packages"
 	cliHttp "github.com/gamejolt/cli/pkg/http"
 	"github.com/gamejolt/cli/pkg/project"
+
 	semver "gopkg.in/blang/semver.v3"
+	"gopkg.in/cheggaaa/pb.v1"
 )
 
 // Client is a client through which http requests for the service api endpoints are made
