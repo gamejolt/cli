@@ -2,12 +2,15 @@ package files
 
 import (
 	"encoding/json"
+	"errors"
+	"io"
 	"net/url"
 	"strconv"
 
-	"github.com/gamejolt/cli/pkg/api/errors"
+	modelErrors "github.com/gamejolt/cli/pkg/api/errors"
 	"github.com/gamejolt/cli/pkg/api/models"
 	cliHttp "github.com/gamejolt/cli/pkg/http"
+	customIO "github.com/gamejolt/cli/pkg/io"
 	semver "gopkg.in/blang/semver.v3"
 )
 
@@ -38,20 +41,26 @@ func Add(client *cliHttp.SimpleClient, gameID, packageID int, releaseVersion *se
 		"checksum":        []string{checksum},
 		"restart":         []string{formatBool(forceRestart)},
 	})
-	_, res, err := client.Multipart("files/add", map[string]string{"file": filepath}, getParams, nil)
+
+	writeFileFunc := func(dst io.Writer, src cliHttp.MultipartFileEntry) (int64, error) {
+		return io.Copy(dst, customIO.NewReader(src.File))
+	}
+
+	_, res, err := client.Multipart("files/add", map[string]string{"file": filepath}, getParams, nil, writeFileFunc)
+
 	if err != nil {
-		return nil, err
+		return nil, errors.New("Failed to upload file: " + err.Error())
 	}
 	defer res.Body.Close()
 
 	decoder := json.NewDecoder(res.Body)
 	result := &AddResult{}
 	if err = decoder.Decode(result); err != nil {
-		return nil, err
+		return nil, errors.New("Failed to upload file, the server returned a weird looking response")
 	}
 
 	if result.Error != nil {
-		return nil, errors.New(result.Error)
+		return nil, modelErrors.New(result.Error)
 	}
 	return result, nil
 }

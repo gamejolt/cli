@@ -64,8 +64,8 @@ func (c *Client) Games() (*games.Games, error) {
 }
 
 // GamePackage does a /packages/:packageId call
-func (c *Client) GamePackage(packageID int) (*models.GamePackage, error) {
-	return packages.Get(c.client, packageID)
+func (c *Client) GamePackage(packageID int, options *packages.GetOptions) (*models.GamePackage, error) {
+	return packages.Get(c.client, packageID, options)
 }
 
 // FileAdd does a /files/add call

@@ -4,12 +4,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
-	"log"
 	"mime/multipart"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+
+	customIO "github.com/gamejolt/cli/pkg/io"
 )
 
 // SimpleClient is a simplified http client
@@ -116,14 +117,20 @@ func (c *SimpleClient) Post(urlStr string, get url.Values, post interface{}) (*h
 	return c.send(req)
 }
 
-type multipartFileEntry struct {
-	param string
-	path  string
-	file  *os.File
+// MultipartFileEntry is a multipart file entry.
+// It is used to map a file to it's field value and label for Multipart requests.
+type MultipartFileEntry struct {
+	Param string
+	Path  string
+	File  *os.File
 }
 
+// WriteFileFunc allows the caller to customize how the file is written.
+// If this is null, a simple io.Copy will be done.
+type WriteFileFunc func(dst io.Writer, src MultipartFileEntry) (int64, error)
+
 // Multipart does a multipart file upload request of type multipart/form-data
-func (c *SimpleClient) Multipart(urlStr string, files map[string]string, get, post url.Values) (*http.Request, *http.Response, error) {
+func (c *SimpleClient) Multipart(urlStr string, files map[string]string, get, post url.Values, writeFileCallback WriteFileFunc) (*http.Request, *http.Response, error) {
 	urlData, err := url.Parse(c.Base + urlStr)
 	if err != nil {
 		return nil, nil, err
@@ -143,16 +150,16 @@ func (c *SimpleClient) Multipart(urlStr string, files map[string]string, get, po
 	urlData.RawQuery = query.Encode()
 	urlStr = urlData.String()
 
-	fileEntries := []multipartFileEntry{}
+	fileEntries := []MultipartFileEntry{}
 	for fileParam, path := range files {
 		fileHandle, err := os.Open(path)
 		if err != nil {
 			return nil, nil, err
 		}
-		fileEntries = append(fileEntries, multipartFileEntry{
-			param: fileParam,
-			path:  path,
-			file:  fileHandle,
+		fileEntries = append(fileEntries, MultipartFileEntry{
+			Param: fileParam,
+			Path:  path,
+			File:  fileHandle,
 		})
 	}
 
@@ -161,20 +168,23 @@ func (c *SimpleClient) Multipart(urlStr string, files map[string]string, get, po
 
 	go func() {
 		for _, fileEntry := range fileEntries {
-			defer fileEntry.file.Close()
+			defer fileEntry.File.Close()
 		}
 		defer reqWriter.Close()
 		defer multipartWriter.Close()
 
 		for _, fileEntry := range fileEntries {
-			log.Println(filepath.Base(fileEntry.path))
-			fileField, err := multipartWriter.CreateFormFile(fileEntry.param, filepath.Base(fileEntry.path))
+			fileField, err := multipartWriter.CreateFormFile(fileEntry.Param, filepath.Base(fileEntry.Path))
 			if err != nil {
-				log.Fatal(err)
 				return
 			}
 
-			_, err = io.Copy(fileField, fileEntry.file)
+			if writeFileCallback == nil {
+				_, err = io.Copy(fileField, customIO.NewReader(fileEntry.File))
+			} else {
+				_, err = writeFileCallback(fileField, fileEntry)
+			}
+			fileEntry.File.Close()
 			if err != nil {
 				return
 			}

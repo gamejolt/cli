@@ -8,80 +8,119 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"strconv"
 	"strings"
 
-	"github.com/droundy/goopt"
+	"github.com/gamejolt/cli/pkg/api/packages"
+
 	"github.com/gamejolt/cli/pkg/api"
 	"github.com/gamejolt/cli/pkg/api/models"
 	"github.com/gamejolt/cli/pkg/fs"
 	"github.com/gamejolt/cli/pkg/project"
+	"github.com/gamejolt/cli/pkg/ui"
 
 	"gopkg.in/blang/semver.v3"
+	"gopkg.in/jessevdk/go-flags.v1"
 )
 
 var inReader = bufio.NewReader(os.Stdin)
 
+// Options is the command line options struct
+type Options struct {
+	Token          string `short:"t" long:"token" value-name:"TOKEN" description:"Your service API authentication token"`
+	GameID         string `short:"g" long:"game" value-name:"GAME-ID" description:"The game ID"`
+	PackageID      string `short:"p" long:"package" value-name:"PACKAGE" description:"The package ID"`
+	ReleaseVersion string `short:"r" long:"release" value-name:"VERSION" description:"The release version to attach the build file to[1]" long-description:"[1] Semver compatible release version. If the specified game doesn't have this release yet, it will be created."`
+	IsBrowser      bool   `short:"b" long:"browser" description:"Upload as a browser build"`
+	Help           bool   `short:"h" long:"help" description:"Show this help message"`
+	Version        bool   `short:"v" long:"version" description:"Display the version"`
+	Args           struct {
+		File string `positional-arg-name:"FILE" description:"The file to upload"`
+	} `positional-args:"1" required:"1"`
+}
+
 func main() {
-	tokenArg := goopt.StringWithLabel([]string{"-t", "--token"}, "", "TOKEN", "Your service API authentication token")
-	gameIDArg := goopt.IntWithLabel([]string{"-g", "--game"}, 0, "GAME", "The game ID")
-	packageIDArg := goopt.IntWithLabel([]string{"-p", "--port"}, 0, "PACKAGE", "The package ID")
-	releaseVersionArg := goopt.StringWithLabel([]string{"-r", "--release"}, "", "RELEASE", "The release version to attach the build file to[1]")
-	browserArg := goopt.Flag([]string{"-b", "--browser"}, []string{}, "Upload as a browser build", "")
-
-	versionArg := goopt.Flag([]string{"-v", "--version"}, []string{}, "Displays the version", "")
-
-	goopt.Version = project.Version
-	goopt.Summary = project.Name + " [options] FILE"
-	oldUsage := goopt.Usage
-	goopt.Usage = func() string {
-		return oldUsage() + `
-Notes:
-  [1] Semver compatible release version. If the specified game doesn't have this release yet, it will be created.
-`
-	}
-	goopt.Parse(nil)
-
-	if *versionArg {
-		PrintAndExit(project.Name, goopt.Version)
-	}
-
-	// If no arguments are given, simply display the help
-	if len(goopt.Args) == 0 {
-		PrintHelpAndExit()
-	}
-
-	filepathArg := goopt.Args[0]
-	if filepathArg == "help" {
-		PrintHelpAndExit()
-	}
-
-	apiClient, user, game, gamePackage, releaseSemver, filepath, err := GetParams(*tokenArg, *gameIDArg, *packageIDArg, *releaseVersionArg, filepathArg)
+	opts := &Options{}
+	parser := flags.NewParser(opts, flags.PassDoubleDash)
+	parser.Usage += "[OPTIONS]"
+	optStrings, err := parser.Parse()
 	if err != nil {
-		log.Println(err.Error())
-		os.Exit(1)
+		for _, opt := range optStrings {
+			if opt == "-h" || opt == "--help" {
+				PrintHelp(parser)
+			}
+			if opt == "-v" || opt == "--version" {
+				PrintVersion()
+			}
+		}
+
+		ui.Error("Oh no, %s!\n\n", err.Error())
+		PrintHelp(parser)
 	}
 
-	err = Upload(apiClient, game, gamePackage, releaseSemver, *browserArg, filepath)
+	if opts.Help {
+		PrintHelp(parser)
+	}
+
+	if opts.Version {
+		PrintVersion()
+	}
+
+	if len(optStrings) > 0 {
+		ErrorAndExit("Too many arguments! Maybe you need to escape the file name if it contains spaces?\n")
+	}
+
+	gameID := 0
+	if opts.GameID != "" {
+		gameID, err = strconv.Atoi(opts.GameID)
+		if err != nil || gameID < 1 {
+			ErrorAndExit("Oh no, invalid game ID - expected a positive integer\n")
+		}
+	}
+
+	packageID := 0
+	if opts.PackageID != "" {
+		packageID, err = strconv.Atoi(opts.PackageID)
+		if err != nil || packageID < 1 {
+			ErrorAndExit("Oh no, invalid package ID - expected a positive integer\n")
+		}
+	}
+
+	apiClient, user, game, gamePackage, releaseSemver, filepath, err := GetParams(opts.Token, gameID, packageID, opts.ReleaseVersion, opts.Args.File)
 	if err != nil {
-		log.Println(err.Error())
-		os.Exit(1)
+		ErrorAndExit("%s\n", err.Error())
+	}
+
+	err = Upload(apiClient, game, gamePackage, releaseSemver, opts.IsBrowser, filepath)
+	if err != nil {
+		ErrorAndExit("%s\n", err.Error())
 	}
 
 	fmt.Printf("Token: %s\nUser ID: %d\nGame ID: %d\nPackage ID: %d\nRelease Version: %s\nFile: %s\n", apiClient.Token(), user.ID, game.ID, gamePackage.ID, releaseSemver.String(), filepath)
 }
 
-// PrintHelpAndExit prints the help usage and exits with code 0
-func PrintHelpAndExit() {
-	PrintAndExit(goopt.Usage())
+// PrintVersion prints the version and exits the program
+func PrintVersion() {
+	PrintAndExit("%s %s\n", project.Name, project.Version)
 }
 
-// PrintAndExit prints something using log.Println and exits with code 0
-func PrintAndExit(a ...interface{}) {
-	fmt.Println(a...)
+// PrintHelp prints the help and exits the program
+func PrintHelp(parser *flags.Parser) {
+	parser.WriteHelp(os.Stdout)
 	os.Exit(0)
+}
+
+// PrintAndExit prints something and exits with code 0
+func PrintAndExit(str string, a ...interface{}) {
+	fmt.Printf(str, a...)
+	os.Exit(0)
+}
+
+// ErrorAndExit prints an string with error formatting and exits with code 1
+func ErrorAndExit(str string, a ...interface{}) {
+	ui.Error(str, a...)
+	os.Exit(1)
 }
 
 // GetParams gets the parsed parameters, prompts for missing ones, validates, and returns them if they are valid
@@ -93,7 +132,7 @@ func GetParams(token string, gameID, packageID int, releaseVersion, path string)
 
 	token = apiClient.Token()
 
-	fmt.Printf("Hello, %s\n\n", user.Username)
+	ui.Success("Hello, %s\n\n", user.Username)
 	game, err := GetGame(apiClient, gameID)
 	if err != nil {
 		return nil, nil, nil, nil, nil, "", err
@@ -111,6 +150,11 @@ func GetParams(token string, gameID, packageID int, releaseVersion, path string)
 
 	file, err := os.Open(path)
 	if err != nil {
+		if os.IsNotExist(err) {
+			err = errors.New("File doesn't exist")
+		} else if os.IsPermission(err) {
+			err = errors.New("No permission to read the file")
+		}
 		return nil, nil, nil, nil, nil, "", err
 	}
 	defer file.Close()
@@ -124,7 +168,7 @@ func GetParams(token string, gameID, packageID int, releaseVersion, path string)
 func Authenticate(token string) (*api.Client, *models.User, error) {
 	// Prompt for the auth token if not given
 	if token == "" {
-		fmt.Print("Enter your authentication token: ")
+		ui.Prompt("Enter your authentication token: ")
 		var err error
 		token, err = inReader.ReadString('\n')
 		if err != nil {
@@ -146,24 +190,20 @@ func Authenticate(token string) (*api.Client, *models.User, error) {
 // GetGame gets and validates a game by a given id. If the id is not given, it will be prompted.
 func GetGame(apiClient *api.Client, gameID int) (*models.Game, error) {
 	if gameID == 0 {
-		fmt.Print("Enter a game ID: ")
+		ui.Prompt("Enter a game ID: ")
 		gameIDStr, err := inReader.ReadString('\n')
 		if err != nil {
 			return nil, err
 		}
 		gameID, err = strconv.Atoi(strings.TrimSpace(gameIDStr))
-		if err != nil {
-			return nil, err
+		if err != nil || gameID < 1 {
+			return nil, errors.New("Invalid game ID - expected a positive integer")
 		}
 	}
 
 	game, err := apiClient.Game(gameID)
 	if err != nil {
 		return nil, err
-	}
-
-	if game == nil {
-		return nil, errors.New("No such game for your account")
 	}
 
 	return game, nil
@@ -176,24 +216,20 @@ func GetGamePackage(apiClient *api.Client, gameID, packageID int) (*models.GameP
 	}
 
 	if packageID == 0 {
-		fmt.Print("Enter a game package ID: ")
+		ui.Prompt("Enter a game package ID: ")
 		packageIDStr, err := inReader.ReadString('\n')
 		if err != nil {
 			return nil, err
 		}
 		packageID, err = strconv.Atoi(strings.TrimSpace(packageIDStr))
-		if err != nil {
-			return nil, err
+		if err != nil || packageID < 1 {
+			return nil, errors.New("Invalid package ID - expected a positive integer")
 		}
 	}
 
-	gamePackage, err := apiClient.GamePackage(packageID)
+	gamePackage, err := apiClient.GamePackage(packageID, &packages.GetOptions{GameID: gameID})
 	if err != nil {
 		return nil, err
-	}
-
-	if gamePackage == nil {
-		return nil, errors.New("No such package for this game")
 	}
 
 	return gamePackage, nil
@@ -203,7 +239,7 @@ func GetGamePackage(apiClient *api.Client, gameID, packageID int) (*models.GameP
 // If the release version is not given, it will be prompted.
 func GetGameRelease(apiClient *api.Client, releaseVersion string) (*semver.Version, error) {
 	if releaseVersion == "" {
-		fmt.Print("Enter a release version (1.2.3): ")
+		ui.Prompt("Enter a release version (1.2.3): ")
 		var err error
 		releaseVersion, err = inReader.ReadString('\n')
 		if err != nil {
@@ -214,7 +250,7 @@ func GetGameRelease(apiClient *api.Client, releaseVersion string) (*semver.Versi
 
 	semver, err := semver.Make(releaseVersion)
 	if err != nil {
-		return nil, err
+		return nil, errors.New("Invalid semver. Check out https://semver.org")
 	}
 	return &semver, nil
 }
