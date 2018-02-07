@@ -140,7 +140,7 @@ func PrintHelp(parser *flags.Parser) {
 
 // PrintAndExit prints something and exits with code 0
 func PrintAndExit(str string, a ...interface{}) {
-	fmt.Printf(str, a...)
+	fmt.Fprintf(color.Output, str, a...)
 	Exit(0)
 }
 
