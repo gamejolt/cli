@@ -21,6 +21,7 @@ import (
 
 	"gopkg.in/blang/semver.v3"
 	"gopkg.in/cheggaaa/pb.v1"
+	color "gopkg.in/fatih/color.v1"
 	"gopkg.in/jessevdk/go-flags.v1"
 )
 
@@ -41,16 +42,19 @@ type Options struct {
 }
 
 func main() {
+	color.Unset()
+	defer color.Unset()
+
 	opts := &Options{}
 	parser := flags.NewParser(opts, flags.PassDoubleDash)
 	parser.Usage += "[OPTIONS]"
 	optStrings, err := parser.Parse()
 	if err != nil {
 		for _, opt := range optStrings {
-			if opt == "-h" || opt == "--help" {
+			if opt == "-h" || opt == "--help" || opt == "/h" || opt == "/help" || opt == "/?" {
 				PrintHelp(parser)
 			}
-			if opt == "-v" || opt == "--version" {
+			if opt == "-v" || opt == "--version" || opt == "/v" || opt == "/version" {
 				PrintVersion()
 			}
 		}
@@ -131,19 +135,25 @@ func PrintVersion() {
 // PrintHelp prints the help and exits the program
 func PrintHelp(parser *flags.Parser) {
 	parser.WriteHelp(os.Stdout)
-	os.Exit(0)
+	Exit(0)
 }
 
 // PrintAndExit prints something and exits with code 0
 func PrintAndExit(str string, a ...interface{}) {
 	fmt.Printf(str, a...)
-	os.Exit(0)
+	Exit(0)
 }
 
 // ErrorAndExit prints an string with error formatting and exits with code 1
 func ErrorAndExit(str string, a ...interface{}) {
 	ui.Error(str, a...)
-	os.Exit(1)
+	Exit(1)
+}
+
+// Exit exits the program
+func Exit(code int) {
+	color.Unset()
+	os.Exit(code)
 }
 
 // GetParams gets the parsed parameters, prompts for missing ones, validates, and returns them if they are valid
@@ -192,6 +202,7 @@ func Authenticate(token string) (*api.Client, *models.User, error) {
 	// Prompt for the auth token if not given
 	if token == "" {
 		ui.Prompt("Enter your authentication token: ")
+		color.Unset()
 		var err error
 		token, err = inReader.ReadString('\n')
 		if err != nil {
@@ -281,7 +292,7 @@ func GetGameRelease(apiClient *api.Client, releaseVersion string) (*semver.Versi
 // Upload uploads a file to a game
 func Upload(apiClient *api.Client, game *models.Game, gamePackage *models.GamePackage, releaseSemver *semver.Version, browserBuild bool, filepath string, filesize int64, checksum string, startByte int64) error {
 	// Create a new progress bar that starts from the given start byte
-	bar := pb.New64(filesize).SetUnits(pb.U_BYTES)
+	bar := pb.New64(filesize).SetMaxWidth(80).SetUnits(pb.U_BYTES)
 	bar.Add64(startByte)
 
 	// The bar will be set to visible by the apiClient as soon as it knows it wouldn't print any errors right off the bat
