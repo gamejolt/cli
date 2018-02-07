@@ -32,8 +32,8 @@ type Options struct {
 	Token          string `short:"t" long:"token" value-name:"TOKEN" description:"Your service API authentication token"`
 	GameID         string `short:"g" long:"game" value-name:"GAME-ID" description:"The game ID"`
 	PackageID      string `short:"p" long:"package" value-name:"PACKAGE" description:"The package ID"`
-	ReleaseVersion string `short:"r" long:"release" value-name:"VERSION" description:"The release version to attach the build file to[1]" long-description:"[1] Semver compatible release version. If the specified game doesn't have this release yet, it will be created."`
-	IsBrowser      bool   `short:"b" long:"browser" description:"Upload as a browser build"`
+	ReleaseVersion string `short:"r" long:"release" value-name:"VERSION" description:"The release version to attach the build file to[1]"`
+	IsBrowser      bool   `short:"b" long:"browser" description:"Upload a browser build. By default uploads a desktop build."`
 	Help           bool   `short:"h" long:"help" description:"Show this help message"`
 	Version        bool   `short:"v" long:"version" description:"Display the version"`
 	Args           struct {
@@ -135,6 +135,10 @@ func PrintVersion() {
 // PrintHelp prints the help and exits the program
 func PrintHelp(parser *flags.Parser) {
 	parser.WriteHelp(os.Stdout)
+	fmt.Println("\n" +
+		"Notes:\n" +
+		"  [1] Semver compatible release version. If the specified game doesn't have this release yet, it will be created.")
+
 	Exit(0)
 }
 
