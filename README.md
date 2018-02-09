@@ -1,4 +1,9 @@
 ## GJPush
+[![CircleCI](https://img.shields.io/circleci/project/github/RedSparr0w/node-csgo-parser.svg)](https://circleci.com/gh/gamejolt/cli/tree/master)
+[![goreportcard](https://goreportcard.com/badge/github.com/gamejolt/cli)](https://goreportcard.com/report/github.com/gamejolt/cli)
+[![GitHub (pre-)release](https://img.shields.io/github/release/gamejolt/cli/all.svg)]()
+[![license](https://img.shields.io/github/license/gamejolt/cli.svg)]()
+
 This is an experimental tool to upload builds to Game Jolt from the command line.
 It supports resuming an upload and creating builds/releases on the fly!  
 ![](https://i.imgur.com/3kfk7Wf.gif)
