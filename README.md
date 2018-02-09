@@ -1,6 +1,7 @@
 ## GJPush
 This is an experimental tool to upload builds to Game Jolt from the command line.
-It supports resuming an upload and creating builds/releases on the fly!
+It supports resuming an upload and creating builds/releases on the fly!  
+![](https://i.imgur.com/3kfk7Wf.gif)
 
 ### Usage
 1. Download from https://github.com/gamejolt/joltron/releases
@@ -24,6 +25,9 @@ GJPush will prompt you for additionanl info it needs, but you can automate it by
 2. The __game ID__ and __package ID__ are available in the url of the manage game package page, for example:
     ![like so](https://i.imgur.com/HcePzxN.png)
 3. The __release__ is [semver](https://semver.org/), looks like 1.2.3
+
+Once all required options are specified, the upload can happen in a single command:
+![](https://i.imgur.com/r9kteuT.gif)
 
 ### Example
 Pushing version 2.0.1 as a desktop build for a game with ID 1 and package ID 2:
