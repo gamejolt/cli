@@ -9,7 +9,7 @@ var (
 	// PromptCol is the color for prompts
 	PromptCol = color.New(color.FgHiWhite, color.Bold).FprintfFunc()
 
-	// SuccessCol is the color for sucess
+	// SuccessCol is the color for success
 	SuccessCol = color.New(color.FgHiGreen, color.Bold).FprintfFunc()
 
 	// InfoCol is the color for prompts

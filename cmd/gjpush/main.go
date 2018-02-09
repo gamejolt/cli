@@ -27,86 +27,21 @@ import (
 
 var inReader = bufio.NewReader(os.Stdin)
 
-// Options is the command line options struct
-type Options struct {
-	Token          string `short:"t" long:"token" value-name:"TOKEN" description:"Your service API authentication token"`
-	GameID         string `short:"g" long:"game" value-name:"GAME-ID" description:"The game ID"`
-	PackageID      string `short:"p" long:"package" value-name:"PACKAGE" description:"The package ID"`
-	ReleaseVersion string `short:"r" long:"release" value-name:"VERSION" description:"The release version to attach the build file to[1]"`
-	IsBrowser      bool   `short:"b" long:"browser" description:"Upload a browser build. By default uploads a desktop build."`
-	Help           bool   `short:"h" long:"help" description:"Show this help message"`
-	Version        bool   `short:"v" long:"version" description:"Display the version"`
-	Args           struct {
-		File string `positional-arg-name:"FILE" description:"The file to upload"`
-	} `positional-args:"1" required:"1"`
-}
-
 func main() {
 	color.Unset()
 	defer color.Unset()
 
-	opts := &Options{}
-	parser := flags.NewParser(opts, flags.PassDoubleDash)
-	parser.Usage += "[OPTIONS]"
-	optStrings, err := parser.Parse()
-	if err != nil {
-		for _, opt := range optStrings {
-			if opt == "-h" || opt == "--help" || opt == "/h" || opt == "/help" || opt == "/?" {
-				PrintHelp(parser)
-			}
-			if opt == "-v" || opt == "--version" || opt == "/v" || opt == "/version" {
-				PrintVersion()
-			}
-		}
-
-		ui.Error("Oh no, %s!\n\n", err.Error())
-		PrintHelp(parser)
-	}
-
-	if opts.Help {
-		PrintHelp(parser)
-	}
-
-	if opts.Version {
-		PrintVersion()
-	}
-
-	if len(optStrings) > 0 {
-		ErrorAndExit("Too many arguments! Maybe you need to escape the file name if it contains spaces?\n")
-	}
-
-	gameID := 0
-	if opts.GameID != "" {
-		gameID, err = strconv.Atoi(opts.GameID)
-		if err != nil || gameID < 1 {
-			ErrorAndExit("Oh no, invalid game ID - expected a positive integer\n")
-		}
-	}
-
-	packageID := 0
-	if opts.PackageID != "" {
-		packageID, err = strconv.Atoi(opts.PackageID)
-		if err != nil || packageID < 1 {
-			ErrorAndExit("Oh no, invalid package ID - expected a positive integer\n")
-		}
-	}
-
-	apiClient, game, gamePackage, releaseSemver, filepath, err := GetParams(opts.Token, gameID, packageID, opts.ReleaseVersion, opts.Args.File)
+	opts, err := ParseOptions()
 	if err != nil {
 		ErrorAndExit("%s\n", err.Error())
 	}
 
-	filesize, err := fs.Filesize(filepath)
-	if err != nil {
-		ErrorAndExit("Failed to determine filesize for some reason\n")
+	// Help and version are printed in the parse options command, we should be able to just quit here
+	if opts.Help || opts.Version {
+		Exit(0)
 	}
 
-	checksum, err := MD5File(filepath)
-	if err != nil {
-		ErrorAndExit("Failed to calculate checksum for the file.\nHas it changed while I was running?\n")
-	}
-
-	fileStatus, err := apiClient.FileStatus(game.ID, filesize, checksum)
+	apiClient, game, gamePackage, releaseSemver, filepath, filesize, checksum, fileStatus, err := GetParams(opts)
 	if err != nil {
 		ErrorAndExit("%s\n", err.Error())
 	}
@@ -127,25 +62,97 @@ func main() {
 	ui.Success("Upload complete :D\n")
 }
 
-// PrintVersion prints the version and exits the program
-func PrintVersion() {
-	PrintAndExit("%s %s\n", project.Name, project.Version)
+// Options is the command line options struct
+type Options struct {
+	Token          string `short:"t" long:"token" value-name:"TOKEN" description:"Your service API authentication token"`
+	GameID         int
+	GameIDStr      string `short:"g" long:"game" value-name:"GAME-ID" description:"The game ID"`
+	PackageID      int
+	PackageIDStr   string `short:"p" long:"package" value-name:"PACKAGE" description:"The package ID"`
+	ReleaseVersion string `short:"r" long:"release" value-name:"VERSION" description:"The release version to attach the build file to[1]"`
+	IsBrowser      bool   `short:"b" long:"browser" description:"Upload a browser build. By default uploads a desktop build."`
+	Help           bool   `short:"h" long:"help" description:"Show this help message"`
+	Version        bool   `short:"v" long:"version" description:"Display the version"`
+	Args           struct {
+		File string `positional-arg-name:"FILE" description:"The file to upload"`
+	} `positional-args:"1" required:"1"`
 }
 
-// PrintHelp prints the help and exits the program
+// ParseOptions parses the command line options
+// If the program should stop after
+func ParseOptions() (*Options, error) {
+	opts := &Options{}
+	parser := flags.NewParser(opts, flags.PassDoubleDash)
+	parser.Usage += "[OPTIONS]"
+	optStrings, err := parser.Parse()
+	if err != nil && optStrings != nil {
+		// Even if there are errors, see if something resembling a help or version flag was passed in.
+		// In these cases we want to silence the error and just output them right away.
+		for _, opt := range optStrings {
+			if opt == "-h" || opt == "--help" || opt == "/h" || opt == "/help" || opt == "/?" {
+				opts.Help = true
+				err = nil
+				break
+			}
+			if opt == "-v" || opt == "--version" || opt == "/v" || opt == "/version" {
+				opts.Version = true
+				err = nil
+				break
+			}
+		}
+	}
+
+	if err != nil {
+		ui.Error("Oh no, %s!\n\n", err.Error())
+		opts.Help = true
+	}
+
+	// If we got passed a help/version flag, we dont care if the rest of the arguments are invalid,
+	// because we'll only print the help/version - so we early out here.
+	if opts.Help {
+		PrintHelp(parser)
+		return opts, nil
+	}
+
+	if opts.Version {
+		PrintVersion()
+		return opts, nil
+	}
+
+	if len(optStrings) > 0 {
+		return nil, errors.New("Too many arguments! Maybe you need to escape the file name if it contains spaces?")
+	}
+
+	if opts.GameIDStr != "" {
+		gameID, err := strconv.Atoi(opts.GameIDStr)
+		if err != nil || gameID < 1 {
+			return nil, errors.New("Oh no, invalid game ID - expected a positive integer")
+		}
+		opts.GameID = gameID
+	}
+
+	if opts.PackageIDStr != "" {
+		packageID, err := strconv.Atoi(opts.PackageIDStr)
+		if err != nil || packageID < 1 {
+			return nil, errors.New("Oh no, invalid package ID - expected a positive integer")
+		}
+		opts.PackageID = packageID
+	}
+
+	return opts, nil
+}
+
+// PrintVersion prints the version
+func PrintVersion() {
+	fmt.Printf("%s %s\n", project.Name, project.Version)
+}
+
+// PrintHelp prints the help
 func PrintHelp(parser *flags.Parser) {
 	parser.WriteHelp(os.Stdout)
 	fmt.Println("\n" +
 		"Notes:\n" +
 		"  [1] Semver compatible release version. If the specified game doesn't have this release yet, it will be created.")
-
-	Exit(0)
-}
-
-// PrintAndExit prints something and exits with code 0
-func PrintAndExit(str string, a ...interface{}) {
-	fmt.Fprintf(color.Output, str, a...)
-	Exit(0)
 }
 
 // ErrorAndExit prints an string with error formatting and exits with code 1
@@ -160,31 +167,7 @@ func Exit(code int) {
 	os.Exit(code)
 }
 
-// GetParams gets the parsed parameters, prompts for missing ones, validates, and returns them if they are valid
-func GetParams(token string, gameID, packageID int, releaseVersion, path string) (*api.Client, *models.Game, *models.GamePackage, *semver.Version, string, error) {
-	apiClient, user, err := Authenticate(token)
-	if err != nil {
-		return nil, nil, nil, nil, "", err
-	}
-
-	token = apiClient.Token()
-
-	ui.Success("Hello, %s\n\n", user.Username)
-	game, err := GetGame(apiClient, gameID)
-	if err != nil {
-		return nil, nil, nil, nil, "", err
-	}
-
-	gamePackage, err := GetGamePackage(apiClient, game.ID, packageID)
-	if err != nil {
-		return nil, nil, nil, nil, "", err
-	}
-
-	releaseSemver, err := GetGameRelease(apiClient, releaseVersion)
-	if err != nil {
-		return nil, nil, nil, nil, "", err
-	}
-
+func getFileData(path string) (int64, string, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -192,11 +175,58 @@ func GetParams(token string, gameID, packageID int, releaseVersion, path string)
 		} else if os.IsPermission(err) {
 			err = errors.New("No permission to read the file")
 		}
-		return nil, nil, nil, nil, "", err
+		return 0, "", err
 	}
-	defer file.Close()
+	file.Close()
 
-	return apiClient, game, gamePackage, releaseSemver, path, nil
+	filesize, err := fs.Filesize(path)
+	if err != nil {
+		return 0, "", errors.New("Failed to determine filesize for some reason")
+	}
+
+	checksum, err := MD5File(path)
+	if err != nil {
+		return 0, "", errors.New("Failed to calculate checksum for the file.\nHas it changed while I was running?")
+	}
+
+	return filesize, checksum, nil
+}
+
+// GetParams gets the parsed parameters, prompts for missing ones, validates, and returns them if they are valid
+func GetParams(opts *Options) (*api.Client, *models.Game, *models.GamePackage, *semver.Version, string, int64, string, *files.GetResult, error) {
+	path := opts.Args.File
+	filesize, checksum, err := getFileData(path)
+	if err != nil {
+		return nil, nil, nil, nil, "", 0, "", nil, err
+	}
+
+	apiClient, user, err := Authenticate(opts.Token)
+	if err != nil {
+		return nil, nil, nil, nil, "", 0, "", nil, err
+	}
+
+	ui.Success("Hello, %s\n\n", user.Username)
+	game, err := GetGame(apiClient, opts.GameID)
+	if err != nil {
+		return nil, nil, nil, nil, "", 0, "", nil, err
+	}
+
+	gamePackage, err := GetGamePackage(apiClient, game.ID, opts.PackageID)
+	if err != nil {
+		return nil, nil, nil, nil, "", 0, "", nil, err
+	}
+
+	releaseSemver, err := GetGameRelease(apiClient, opts.ReleaseVersion)
+	if err != nil {
+		return nil, nil, nil, nil, "", 0, "", nil, err
+	}
+
+	fileStatus, err := apiClient.FileStatus(game.ID, filesize, checksum)
+	if err != nil {
+		return nil, nil, nil, nil, "", 0, "", nil, err
+	}
+
+	return apiClient, game, gamePackage, releaseSemver, path, filesize, checksum, fileStatus, nil
 }
 
 // Authenticate uses the given token to authenticate the user.

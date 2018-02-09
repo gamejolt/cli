@@ -41,9 +41,9 @@ func formatBool(b bool) string {
 // Get sends a new GET /files/add request
 func Get(client *cliHttp.SimpleClient, gameID int, size int64, checksum string) (*GetResult, error) {
 	getParams := url.Values(map[string][]string{
-		"game_id":  []string{strconv.Itoa(gameID)},
-		"size":     []string{strconv.FormatInt(size, 10)},
-		"checksum": []string{checksum},
+		"game_id":  {strconv.Itoa(gameID)},
+		"size":     {strconv.FormatInt(size, 10)},
+		"checksum": {checksum},
 	})
 
 	_, res, err := client.Get("files/add", getParams)
@@ -68,13 +68,13 @@ func Get(client *cliHttp.SimpleClient, gameID int, size int64, checksum string) 
 // Add sends a new POST /files/add request
 func Add(client *cliHttp.SimpleClient, gameID, packageID int, releaseVersion *semver.Version, isDownloadable bool, size int64, checksum string, forceRestart bool, filepath string, startByte int64, bar *pb.ProgressBar) (*AddResult, error) {
 	getParams := url.Values(map[string][]string{
-		"game_id":         []string{strconv.Itoa(gameID)},
-		"package_id":      []string{strconv.Itoa(packageID)},
-		"release_version": []string{releaseVersion.String()},
-		"downloadable":    []string{formatBool(isDownloadable)},
-		"size":            []string{strconv.FormatInt(size, 10)},
-		"checksum":        []string{checksum},
-		"restart":         []string{formatBool(forceRestart)},
+		"game_id":         {strconv.Itoa(gameID)},
+		"package_id":      {strconv.Itoa(packageID)},
+		"release_version": {releaseVersion.String()},
+		"downloadable":    {formatBool(isDownloadable)},
+		"size":            {strconv.FormatInt(size, 10)},
+		"checksum":        {checksum},
+		"restart":         {formatBool(forceRestart)},
 	})
 
 	writeFileFunc := func(dst io.Writer, src cliHttp.MultipartFileEntry) (int64, error) {

@@ -53,40 +53,10 @@ func (c *SimpleClient) getURL(urlStr string) (*url.URL, error) {
 	return base.ResolveReference(u), nil
 }
 
-// Get does an http get
-func (c *SimpleClient) Get(urlStr string, params url.Values) (*http.Request, *http.Response, error) {
+func (c *SimpleClient) buildQuery(urlStr string, get url.Values) (string, error) {
 	urlData, err := c.getURL(urlStr)
 	if err != nil {
-		return nil, nil, err
-	}
-
-	query := urlData.Query()
-	for key, values := range params {
-		if len(values) == 1 {
-			query.Set(key, values[0])
-		} else {
-			key += "[]"
-			for _, value := range values {
-				query.Add(key, value)
-			}
-		}
-	}
-	urlData.RawQuery = query.Encode()
-	urlStr = urlData.String()
-
-	req, err := c.NewRequest("GET", urlStr, nil)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return c.send(req)
-}
-
-// Post does an http post of type application/json
-func (c *SimpleClient) Post(urlStr string, get url.Values, post interface{}) (*http.Request, *http.Response, error) {
-	urlData, err := c.getURL(urlStr)
-	if err != nil {
-		return nil, nil, err
+		return "", err
 	}
 
 	query := urlData.Query()
@@ -101,7 +71,30 @@ func (c *SimpleClient) Post(urlStr string, get url.Values, post interface{}) (*h
 		}
 	}
 	urlData.RawQuery = query.Encode()
-	urlStr = urlData.String()
+	return urlData.String(), nil
+}
+
+// Get does an http get
+func (c *SimpleClient) Get(urlStr string, params url.Values) (*http.Request, *http.Response, error) {
+	urlStr, err := c.buildQuery(urlStr, params)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	req, err := c.NewRequest("GET", urlStr, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return c.send(req)
+}
+
+// Post does an http post of type application/json
+func (c *SimpleClient) Post(urlStr string, get url.Values, post interface{}) (*http.Request, *http.Response, error) {
+	urlStr, err := c.buildQuery(urlStr, get)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	jsonBytes, err := json.Marshal(post)
 	if err != nil {
@@ -125,36 +118,12 @@ type MultipartFileEntry struct {
 	File  *os.File
 }
 
-// WriteFileFunc allows the caller to customize how the file is written.
-// If this is null, a simple io.Copy will be done.
-type WriteFileFunc func(dst io.Writer, src MultipartFileEntry) (int64, error)
-
-// Multipart does a multipart file upload request of type multipart/form-data
-func (c *SimpleClient) Multipart(urlStr string, files map[string]string, get, post url.Values, writeFileCallback WriteFileFunc) (*http.Request, *http.Response, error) {
-	urlData, err := url.Parse(c.Base + urlStr)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	query := urlData.Query()
-	for key, values := range get {
-		if len(values) == 1 {
-			query.Set(key, values[0])
-		} else {
-			key += "[]"
-			for _, value := range values {
-				query.Add(key, value)
-			}
-		}
-	}
-	urlData.RawQuery = query.Encode()
-	urlStr = urlData.String()
-
+func (c *SimpleClient) makeMultipartEntries(files map[string]string) ([]MultipartFileEntry, error) {
 	fileEntries := []MultipartFileEntry{}
 	for fileParam, path := range files {
 		fileHandle, err := os.Open(path)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		fileEntries = append(fileEntries, MultipartFileEntry{
 			Param: fileParam,
@@ -162,34 +131,54 @@ func (c *SimpleClient) Multipart(urlStr string, files map[string]string, get, po
 			File:  fileHandle,
 		})
 	}
+	return fileEntries, nil
+}
+
+// WriteFileFunc allows the caller to customize how the file is written.
+// If this is null, a simple io.Copy will be done.
+type WriteFileFunc func(dst io.Writer, src MultipartFileEntry) (int64, error)
+
+func (c *SimpleClient) uploadMultipartEntries(fileEntries []MultipartFileEntry, reqWriter io.WriteCloser, multipartWriter *multipart.Writer, writeFileCallback WriteFileFunc) {
+	for _, fileEntry := range fileEntries {
+		defer fileEntry.File.Close()
+	}
+	defer reqWriter.Close()
+	defer multipartWriter.Close()
+
+	for _, fileEntry := range fileEntries {
+		fileField, err := multipartWriter.CreateFormFile(fileEntry.Param, filepath.Base(fileEntry.Path))
+		if err != nil {
+			return
+		}
+
+		if writeFileCallback == nil {
+			_, err = io.Copy(fileField, customIO.NewReader(fileEntry.File))
+		} else {
+			_, err = writeFileCallback(fileField, fileEntry)
+		}
+		fileEntry.File.Close()
+		if err != nil {
+			return
+		}
+	}
+}
+
+// Multipart does a multipart file upload request of type multipart/form-data
+func (c *SimpleClient) Multipart(urlStr string, files map[string]string, get, post url.Values, writeFileCallback WriteFileFunc) (*http.Request, *http.Response, error) {
+	urlStr, err := c.buildQuery(urlStr, get)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	fileEntries, err := c.makeMultipartEntries(files)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	reqReader, reqWriter := io.Pipe()
 	multipartWriter := multipart.NewWriter(reqWriter)
 
 	go func() {
-		for _, fileEntry := range fileEntries {
-			defer fileEntry.File.Close()
-		}
-		defer reqWriter.Close()
-		defer multipartWriter.Close()
-
-		for _, fileEntry := range fileEntries {
-			fileField, err := multipartWriter.CreateFormFile(fileEntry.Param, filepath.Base(fileEntry.Path))
-			if err != nil {
-				return
-			}
-
-			if writeFileCallback == nil {
-				_, err = io.Copy(fileField, customIO.NewReader(fileEntry.File))
-			} else {
-				_, err = writeFileCallback(fileField, fileEntry)
-			}
-			fileEntry.File.Close()
-			if err != nil {
-				return
-			}
-		}
-
 		for key, values := range post {
 			if len(values) == 1 {
 				if err := multipartWriter.WriteField(key, values[0]); err != nil {
@@ -204,6 +193,8 @@ func (c *SimpleClient) Multipart(urlStr string, files map[string]string, get, po
 				}
 			}
 		}
+
+		c.uploadMultipartEntries(fileEntries, reqWriter, multipartWriter, writeFileCallback)
 	}()
 
 	req, err := c.NewRequest("POST", urlStr, reqReader)
