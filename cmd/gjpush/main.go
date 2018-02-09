@@ -84,23 +84,9 @@ func ParseOptions() (*Options, error) {
 	opts := &Options{}
 	parser := flags.NewParser(opts, flags.PassDoubleDash)
 	parser.Usage += "[OPTIONS]"
+
 	optStrings, err := parser.Parse()
-	if err != nil && optStrings != nil {
-		// Even if there are errors, see if something resembling a help or version flag was passed in.
-		// In these cases we want to silence the error and just output them right away.
-		for _, opt := range optStrings {
-			if opt == "-h" || opt == "--help" || opt == "/h" || opt == "/help" || opt == "/?" {
-				opts.Help = true
-				err = nil
-				break
-			}
-			if opt == "-v" || opt == "--version" || opt == "/v" || opt == "/version" {
-				opts.Version = true
-				err = nil
-				break
-			}
-		}
-	}
+	err = findHelpOrVersionFlags(opts, optStrings, err)
 
 	if err != nil {
 		ui.Error("Oh no, %s!\n\n", err.Error())
@@ -140,6 +126,27 @@ func ParseOptions() (*Options, error) {
 	}
 
 	return opts, nil
+}
+
+func findHelpOrVersionFlags(opts *Options, optStrings []string, err error) error {
+	if err == nil || optStrings == nil {
+		return nil
+	}
+
+	// Even if there are errors, see if something resembling a help or version flag was passed in.
+	// In these cases we want to silence the error and just output them right away.
+	for _, opt := range optStrings {
+		if opt == "-h" || opt == "--help" || opt == "/h" || opt == "/help" || opt == "/?" {
+			opts.Help = true
+			return nil
+		}
+		if opt == "-v" || opt == "--version" || opt == "/v" || opt == "/version" {
+			opts.Version = true
+			return nil
+		}
+	}
+
+	return err
 }
 
 // PrintVersion prints the version
