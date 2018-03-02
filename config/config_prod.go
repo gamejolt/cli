@@ -6,5 +6,5 @@ package config
 const BaseURL = "https://gamejolt.com"
 
 // ChunkSize is the chunk size a file is uploaded in.
-// In production we split to 100 MB chunks.
-const ChunkSize = 100 * 1024 * 1024
+// In production we split to 10 MB chunks.
+const ChunkSize = 10 * 1024 * 1024

@@ -6,16 +6,19 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"strconv"
 	"strings"
+	"time"
+
+	"github.com/howeyc/gopass"
 
 	"github.com/gamejolt/cli/pkg/api"
 	"github.com/gamejolt/cli/pkg/api/files"
 	"github.com/gamejolt/cli/pkg/api/models"
 	"github.com/gamejolt/cli/pkg/api/packages"
 	"github.com/gamejolt/cli/pkg/fs"
+	_io "github.com/gamejolt/cli/pkg/io"
 	"github.com/gamejolt/cli/pkg/project"
 	"github.com/gamejolt/cli/pkg/ui"
 
@@ -191,12 +194,41 @@ func getFileData(path string) (int64, string, error) {
 		return 0, "", errors.New("Failed to determine filesize for some reason")
 	}
 
-	checksum, err := MD5File(path)
+	checksum, err := md5File(path, filesize)
 	if err != nil {
 		return 0, "", errors.New("Failed to calculate checksum for the file.\nHas it changed while I was running?")
 	}
 
 	return filesize, checksum, nil
+}
+
+func md5File(path string, filesize int64) (string, error) {
+	hash := md5.New()
+
+	file, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	isSlow := false
+	_, err = _io.CopyWithSlowBar(hash, file, 2*time.Second, func() *pb.ProgressBar {
+		isSlow = true
+		ui.Info("Calculating checksum...\n")
+		return pb.New64(filesize).SetMaxWidth(80).SetUnits(pb.U_BYTES_DEC)
+	})
+
+	if isSlow {
+		ui.Info("\n")
+	}
+
+	if err != nil {
+		return "", err
+	}
+
+	var result []byte
+	result = hash.Sum(result)
+	return hex.EncodeToString(result), nil
 }
 
 // GetParams gets the parsed parameters, prompts for missing ones, validates, and returns them if they are valid
@@ -245,11 +277,12 @@ func Authenticate(token string) (*api.Client, *models.User, error) {
 		ui.Prompt("Enter your authentication token: ")
 		color.Unset()
 		var err error
-		token, err = inReader.ReadString('\n')
+
+		tokenBytes, err := gopass.GetPasswd()
 		if err != nil {
 			return nil, nil, err
 		}
-		token = strings.TrimSpace(token)
+		token = strings.TrimSpace(string(tokenBytes))
 	}
 
 	// Validate it
@@ -333,11 +366,12 @@ func GetGameRelease(apiClient *api.Client, releaseVersion string) (*semver.Versi
 // Upload uploads a file to a game
 func Upload(apiClient *api.Client, game *models.Game, gamePackage *models.GamePackage, releaseSemver *semver.Version, browserBuild bool, filepath string, filesize int64, checksum string, startByte int64) error {
 	// Create a new progress bar that starts from the given start byte
-	bar := pb.New64(filesize).SetMaxWidth(80).SetUnits(pb.U_BYTES)
+	bar := pb.New64(filesize).SetMaxWidth(80).SetUnits(pb.U_BYTES_DEC)
 	bar.Add64(startByte)
 
 	// The bar will be set to visible by the apiClient as soon as it knows it wouldn't print any errors right off the bat
 	bar.ShowBar = false
+	bar.ShowSpeed = true
 	bar.Start()
 	defer bar.Finish()
 
@@ -367,26 +401,12 @@ func uploadChunk(apiClient *api.Client, game *models.Game, gamePackage *models.G
 	}
 
 	if result.Status == "error" || result.Start <= startByte {
-		return nil, errors.New("Uh oh, something went wrong! Did the file change while I was uploading? :(")
+		return nil, errors.New(`Uh oh, something went wrong!
+This could happen for a couple of reasons:
+    • The file changed while uploading
+    • File upload has expired (no progress in the last day or so)
+    • We fucked up`)
 	}
 
 	return result, nil
-}
-
-// MD5File calculates a file's MD5. This is a blocking operation
-func MD5File(path string) (string, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return "", err
-	}
-	defer file.Close()
-
-	hash := md5.New()
-	if _, err := io.Copy(hash, file); err != nil {
-		return "", err
-	}
-
-	var result []byte
-	result = hash.Sum(result)
-	return hex.EncodeToString(result), nil
 }
