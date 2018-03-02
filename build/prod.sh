@@ -1,2 +1,2 @@
 #!/bin/bash
-go build -ldflags "-s -w" -tags prod ./cmd/gjpush
+go build -ldflags "-s -w" -tags "prod forceposix" ./cmd/gjpush

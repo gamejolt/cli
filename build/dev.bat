@@ -1,2 +1,2 @@
 @echo off
-go build -ldflags "-s -w" ./cmd/gjpush
+go build -ldflags "-s -w" -tags "forceposix" ./cmd/gjpush
