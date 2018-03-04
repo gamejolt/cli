@@ -9,7 +9,7 @@ It supports resuming an upload and creating builds/releases on the fly!
 ![](https://i.imgur.com/3kfk7Wf.gif)
 
 ### Usage
-1. Download from https://github.com/gamejolt/joltron/releases
+1. Download from https://github.com/gamejolt/cli/releases
 2. Run from cmd / terminal:
     ```
     gjpush file
