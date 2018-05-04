@@ -71,6 +71,7 @@ type GameBuild struct {
 	EmbedWidth               int                     `json:"embed_width"`
 	EmbedHeight              int                     `json:"embed_height"`
 	BrowserDisableRightClick bool                    `json:"browser_disable_right_click"`
+	HTTPSEnabled             bool                    `json:"https_enabled"`
 	Errors                   string                  `json:"errors"`
 	CreatedOn                int64                   `json:"created_on"`
 	UpdatedOn                int64                   `json:"updated_on"`
