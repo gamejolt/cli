@@ -26,7 +26,14 @@ GJPush will prompt you for additionanl info it needs, but you can automate it by
 -b, --browser            Upload a browser build. By default uploads a desktop build.
 ```
 
-1. __Token__ is your "password" to the tool. At the moment only testers are given one, but when the tool is launched publicly, you could get a token from your dashboard.
+1. __Token__ is your "password" to the tool, and can be provided to the tool in 3 ways:
+
+    - The `-t` / `--token` parameter
+    - An environment variable `GJPUSH_TOKEN`
+    - A global credentials file located in your home directory, in `.gj/credentials.json`.  
+    The credentials file is a json containing a single key `token`. Looks like `{"token":"your token here"}`
+  
+    At the moment only testers are given a token, but when the tool is launched publicly, you can get one from your dashboard.
 2. The __game ID__ and __package ID__ are available in the url of the manage game package page, for example:
     ![like so](https://i.imgur.com/HcePzxN.png)
 3. The __release__ is [semver](https://semver.org/), looks like 1.2.3
