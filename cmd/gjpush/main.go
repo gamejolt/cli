@@ -4,14 +4,18 @@ import (
 	"bufio"
 	"crypto/md5"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/howeyc/gopass"
+	"github.com/mitchellh/go-homedir"
 
 	"github.com/gamejolt/cli/pkg/api"
 	"github.com/gamejolt/cli/pkg/api/files"
@@ -81,6 +85,11 @@ type Options struct {
 	} `positional-args:"1" required:"1"`
 }
 
+// Credentials is the structure of the credentials file used to fetch the token from if none is specified
+type Credentials struct {
+	Token string `json:"token"`
+}
+
 // ParseOptions parses the command line options
 // If the program should stop after
 func ParseOptions() (*Options, error) {
@@ -110,6 +119,11 @@ func ParseOptions() (*Options, error) {
 
 	if len(optStrings) > 0 {
 		return nil, errors.New("Too many arguments! Maybe you need to escape the file name if it contains spaces?")
+	}
+
+	// If token is not specified, attempt getting it from an environment variable or a credentials file
+	if opts.Token == "" {
+		opts.Token = getTokenFallback()
 	}
 
 	if opts.GameIDStr != "" {
@@ -175,6 +189,32 @@ func ErrorAndExit(str string, a ...interface{}) {
 func Exit(code int) {
 	color.Unset()
 	os.Exit(code)
+}
+
+func getTokenFallback() (token string) {
+	// Attempt to get the token from the GJPUSH_TOKEN environment variable
+	token = os.Getenv("GJPUSH_TOKEN")
+	if token != "" {
+		ui.Info("Using token from `GJPUSH_TOKEN` environment variable\n")
+		return
+	}
+
+	// Attempt to get the token from the ~/.gj/credentials.json file
+	if dir, err := homedir.Dir(); err == nil {
+		credentialsFile := filepath.Join(dir, ".gj", "credentials.json")
+		if bytes, err := ioutil.ReadFile(credentialsFile); err == nil {
+			creds := &Credentials{}
+			if err = json.Unmarshal(bytes, creds); err == nil {
+				ui.Info("Using token from credentials file\n")
+				token = creds.Token
+				return
+			}
+
+			ui.Warn("Attempted to get token credentials file (%s), but the file is malformed: %s\n", credentialsFile, err.Error())
+		}
+	}
+
+	return
 }
 
 func getFileData(path string) (int64, string, error) {
