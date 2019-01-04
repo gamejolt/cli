@@ -24,6 +24,9 @@ GJPush will prompt you for additionanl info it needs, but you can automate it by
 -p, --package=PACKAGE    The package ID
 -r, --release=VERSION    The release version to attach the build file to
 -b, --browser            Upload a browser build. By default uploads a desktop build.
+
+Advanced Options:
+--chunk-size=MB          How big should the chunks the CLI uploads be. Defaults to 10.
 ```
 
 1. __Token__ is your "password" to the tool, and can be provided to the tool in 3 ways:

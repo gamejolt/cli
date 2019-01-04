@@ -80,7 +80,7 @@ type Options struct {
 	ReleaseVersion string `short:"r" long:"release" value-name:"VERSION" description:"The release version to attach the build file to[1]"`
 	IsBrowser      bool   `short:"b" long:"browser" description:"Upload a browser build. By default uploads a desktop build."`
 	Advanced       struct {
-		ChunkSize int `long:"chunk-size" value-name:"MB" description:"How big should the chunks the CLI uploads be."`
+		ChunkSize int `long:"chunk-size" value-name:"MB" description:"How big should the chunks the CLI uploads be. Defaults to 10."`
 	} `group:"Advanced Options"`
 	Help    bool `short:"h" long:"help" description:"Show this help message"`
 	Version bool `short:"v" long:"version" description:"Display the version"`
