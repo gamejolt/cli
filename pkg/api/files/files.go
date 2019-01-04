@@ -7,14 +7,13 @@ import (
 	"net/url"
 	"strconv"
 
-	"github.com/gamejolt/cli/config"
 	modelErrors "github.com/gamejolt/cli/pkg/api/errors"
 	"github.com/gamejolt/cli/pkg/api/models"
 	cliHttp "github.com/gamejolt/cli/pkg/http"
 	customIO "github.com/gamejolt/cli/pkg/io"
 
 	semver "gopkg.in/blang/semver.v3"
-	"gopkg.in/cheggaaa/pb.v1"
+	pb "gopkg.in/cheggaaa/pb.v1"
 )
 
 // GetResult is the result from the /files endpoint
@@ -66,7 +65,7 @@ func Get(client *cliHttp.SimpleClient, gameID int, size int64, checksum string) 
 }
 
 // Add sends a new POST /files/add request
-func Add(client *cliHttp.SimpleClient, gameID, packageID int, releaseVersion *semver.Version, isDownloadable bool, size int64, checksum string, forceRestart bool, filepath string, startByte int64, bar *pb.ProgressBar) (*AddResult, error) {
+func Add(client *cliHttp.SimpleClient, gameID, packageID int, releaseVersion *semver.Version, isDownloadable bool, size int64, checksum string, forceRestart bool, filepath string, startByte, chunkSize int64, bar *pb.ProgressBar) (*AddResult, error) {
 	getParams := url.Values(map[string][]string{
 		"game_id":         {strconv.Itoa(gameID)},
 		"package_id":      {strconv.Itoa(packageID)},
@@ -84,7 +83,7 @@ func Add(client *cliHttp.SimpleClient, gameID, packageID int, releaseVersion *se
 		}
 
 		// Read only the wanted chunk size
-		reader := io.LimitReader(src.File, config.ChunkSize)
+		reader := io.LimitReader(src.File, chunkSize)
 
 		// Limit the upload speed in development for testing
 		reader = customIO.NewReader(reader)

@@ -14,7 +14,7 @@ import (
 	"github.com/gamejolt/cli/pkg/project"
 
 	semver "gopkg.in/blang/semver.v3"
-	"gopkg.in/cheggaaa/pb.v1"
+	pb "gopkg.in/cheggaaa/pb.v1"
 )
 
 // Client is a client through which http requests for the service api endpoints are made
@@ -76,6 +76,6 @@ func (c *Client) FileStatus(gameID int, size int64, checksum string) (*files.Get
 }
 
 // FileAdd does a POST /files/add call
-func (c *Client) FileAdd(gameID, packageID int, releaseVersion *semver.Version, isDownloadable bool, size int64, checksum string, forceRestart bool, filepath string, startByte int64, bar *pb.ProgressBar) (*files.AddResult, error) {
-	return files.Add(c.client, gameID, packageID, releaseVersion, isDownloadable, size, checksum, forceRestart, filepath, startByte, bar)
+func (c *Client) FileAdd(gameID, packageID int, releaseVersion *semver.Version, isDownloadable bool, size int64, checksum string, forceRestart bool, filepath string, startByte, chunkSize int64, bar *pb.ProgressBar) (*files.AddResult, error) {
+	return files.Add(c.client, gameID, packageID, releaseVersion, isDownloadable, size, checksum, forceRestart, filepath, startByte, chunkSize, bar)
 }

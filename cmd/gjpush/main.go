@@ -15,8 +15,9 @@ import (
 	"time"
 
 	"github.com/howeyc/gopass"
-	"github.com/mitchellh/go-homedir"
+	homedir "github.com/mitchellh/go-homedir"
 
+	"github.com/gamejolt/cli/config"
 	"github.com/gamejolt/cli/pkg/api"
 	"github.com/gamejolt/cli/pkg/api/files"
 	"github.com/gamejolt/cli/pkg/api/models"
@@ -26,10 +27,10 @@ import (
 	"github.com/gamejolt/cli/pkg/project"
 	"github.com/gamejolt/cli/pkg/ui"
 
-	"gopkg.in/blang/semver.v3"
-	"gopkg.in/cheggaaa/pb.v1"
+	semver "gopkg.in/blang/semver.v3"
+	pb "gopkg.in/cheggaaa/pb.v1"
 	color "gopkg.in/fatih/color.v1"
-	"gopkg.in/jessevdk/go-flags.v1"
+	flags "gopkg.in/jessevdk/go-flags.v1"
 )
 
 var inReader = bufio.NewReader(os.Stdin)
@@ -48,7 +49,7 @@ func main() {
 		Exit(0)
 	}
 
-	apiClient, game, gamePackage, releaseSemver, filepath, filesize, checksum, fileStatus, err := GetParams(opts)
+	apiClient, game, gamePackage, releaseSemver, filepath, filesize, checksum, fileStatus, chunkSize, err := GetParams(opts)
 	if err != nil {
 		ErrorAndExit("%s\n", err.Error())
 	}
@@ -62,7 +63,7 @@ func main() {
 		ui.Info("Starting a new upload ...\n")
 	}
 
-	err = Upload(apiClient, game, gamePackage, releaseSemver, opts.IsBrowser, filepath, filesize, checksum, fileStatus.Start)
+	err = Upload(apiClient, game, gamePackage, releaseSemver, opts.IsBrowser, filepath, filesize, checksum, fileStatus.Start, chunkSize)
 	if err != nil {
 		ErrorAndExit("%s\n", err.Error())
 	}
@@ -78,9 +79,12 @@ type Options struct {
 	PackageIDStr   string `short:"p" long:"package" value-name:"PACKAGE" description:"The package ID"`
 	ReleaseVersion string `short:"r" long:"release" value-name:"VERSION" description:"The release version to attach the build file to[1]"`
 	IsBrowser      bool   `short:"b" long:"browser" description:"Upload a browser build. By default uploads a desktop build."`
-	Help           bool   `short:"h" long:"help" description:"Show this help message"`
-	Version        bool   `short:"v" long:"version" description:"Display the version"`
-	Args           struct {
+	Advanced       struct {
+		ChunkSize int `long:"chunk-size" value-name:"MB" description:"How big should the chunks the CLI uploads be."`
+	} `group:"Advanced Options"`
+	Help    bool `short:"h" long:"help" description:"Show this help message"`
+	Version bool `short:"v" long:"version" description:"Display the version"`
+	Args    struct {
 		File string `positional-arg-name:"FILE" description:"The file to upload"`
 	} `positional-args:"1" required:"1"`
 }
@@ -272,40 +276,45 @@ func md5File(path string, filesize int64) (string, error) {
 }
 
 // GetParams gets the parsed parameters, prompts for missing ones, validates, and returns them if they are valid
-func GetParams(opts *Options) (*api.Client, *models.Game, *models.GamePackage, *semver.Version, string, int64, string, *files.GetResult, error) {
+func GetParams(opts *Options) (*api.Client, *models.Game, *models.GamePackage, *semver.Version, string, int64, string, *files.GetResult, int64, error) {
 	path := opts.Args.File
 	filesize, checksum, err := getFileData(path)
 	if err != nil {
-		return nil, nil, nil, nil, "", 0, "", nil, err
+		return nil, nil, nil, nil, "", 0, "", nil, 0, err
 	}
 
 	apiClient, user, err := Authenticate(opts.Token)
 	if err != nil {
-		return nil, nil, nil, nil, "", 0, "", nil, err
+		return nil, nil, nil, nil, "", 0, "", nil, 0, err
 	}
 
 	ui.Success("Hello, %s\n\n", user.Username)
 	game, err := GetGame(apiClient, opts.GameID)
 	if err != nil {
-		return nil, nil, nil, nil, "", 0, "", nil, err
+		return nil, nil, nil, nil, "", 0, "", nil, 0, err
 	}
 
 	gamePackage, err := GetGamePackage(apiClient, game.ID, opts.PackageID)
 	if err != nil {
-		return nil, nil, nil, nil, "", 0, "", nil, err
+		return nil, nil, nil, nil, "", 0, "", nil, 0, err
 	}
 
 	releaseSemver, err := GetGameRelease(apiClient, opts.ReleaseVersion)
 	if err != nil {
-		return nil, nil, nil, nil, "", 0, "", nil, err
+		return nil, nil, nil, nil, "", 0, "", nil, 0, err
 	}
 
 	fileStatus, err := apiClient.FileStatus(game.ID, filesize, checksum)
 	if err != nil {
-		return nil, nil, nil, nil, "", 0, "", nil, err
+		return nil, nil, nil, nil, "", 0, "", nil, 0, err
 	}
 
-	return apiClient, game, gamePackage, releaseSemver, path, filesize, checksum, fileStatus, nil
+	chunkSize := int64(opts.Advanced.ChunkSize) * 1024 * 1024
+	if chunkSize <= 0 {
+		chunkSize = config.ChunkSize
+	}
+
+	return apiClient, game, gamePackage, releaseSemver, path, filesize, checksum, fileStatus, chunkSize, nil
 }
 
 // Authenticate uses the given token to authenticate the user.
@@ -404,7 +413,7 @@ func GetGameRelease(apiClient *api.Client, releaseVersion string) (*semver.Versi
 }
 
 // Upload uploads a file to a game
-func Upload(apiClient *api.Client, game *models.Game, gamePackage *models.GamePackage, releaseSemver *semver.Version, browserBuild bool, filepath string, filesize int64, checksum string, startByte int64) error {
+func Upload(apiClient *api.Client, game *models.Game, gamePackage *models.GamePackage, releaseSemver *semver.Version, browserBuild bool, filepath string, filesize int64, checksum string, startByte, chunkSize int64) error {
 	// Create a new progress bar that starts from the given start byte
 	bar := pb.New64(filesize).SetMaxWidth(80).SetUnits(pb.U_BYTES_DEC)
 	bar.Add64(startByte)
@@ -416,7 +425,7 @@ func Upload(apiClient *api.Client, game *models.Game, gamePackage *models.GamePa
 	defer bar.Finish()
 
 	for {
-		result, err := uploadChunk(apiClient, game, gamePackage, releaseSemver, browserBuild, filepath, filesize, checksum, startByte, bar)
+		result, err := uploadChunk(apiClient, game, gamePackage, releaseSemver, browserBuild, filepath, filesize, checksum, startByte, chunkSize, bar)
 		if err != nil {
 			return err
 		}
@@ -430,8 +439,8 @@ func Upload(apiClient *api.Client, game *models.Game, gamePackage *models.GamePa
 	}
 }
 
-func uploadChunk(apiClient *api.Client, game *models.Game, gamePackage *models.GamePackage, releaseSemver *semver.Version, browserBuild bool, filepath string, filesize int64, checksum string, startByte int64, bar *pb.ProgressBar) (*files.AddResult, error) {
-	result, err := apiClient.FileAdd(game.ID, gamePackage.ID, releaseSemver, !browserBuild, filesize, checksum, false, filepath, startByte, bar)
+func uploadChunk(apiClient *api.Client, game *models.Game, gamePackage *models.GamePackage, releaseSemver *semver.Version, browserBuild bool, filepath string, filesize int64, checksum string, startByte, chunkSize int64, bar *pb.ProgressBar) (*files.AddResult, error) {
+	result, err := apiClient.FileAdd(game.ID, gamePackage.ID, releaseSemver, !browserBuild, filesize, checksum, false, filepath, startByte, chunkSize, bar)
 	if err != nil {
 		return nil, err
 	}
