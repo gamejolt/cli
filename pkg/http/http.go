@@ -2,13 +2,16 @@ package http
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"io"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"time"
 
 	customIO "github.com/gamejolt/cli/pkg/io"
 )
@@ -21,6 +24,8 @@ type SimpleClient struct {
 
 	// NewRequest allows to customize which http.Request the simple client will use.
 	NewRequest func(method, urlStr string, body io.Reader) (*http.Request, error)
+
+	httpClient *http.Client
 }
 
 // NewSimpleClient creates a new default client
@@ -30,12 +35,27 @@ func NewSimpleClient() *SimpleClient {
 		NewRequest: func(method, urlStr string, body io.Reader) (*http.Request, error) {
 			return http.NewRequest(method, urlStr, body)
 		},
+		httpClient: &http.Client{
+			Transport: &http.Transport{
+				Proxy: http.ProxyFromEnvironment,
+				DialContext: (&net.Dialer{
+					Timeout:   30 * time.Second,
+					KeepAlive: 30 * time.Second,
+					DualStack: true,
+				}).DialContext,
+				MaxIdleConns:          100,
+				IdleConnTimeout:       90 * time.Second,
+				TLSHandshakeTimeout:   10 * time.Second,
+				ExpectContinueTimeout: 1 * time.Second,
+				TLSNextProto:          make(map[string]func(authority string, c *tls.Conn) http.RoundTripper, 0),
+			},
+		},
 	}
 	return client
 }
 
 func (c *SimpleClient) send(req *http.Request) (*http.Request, *http.Response, error) {
-	res, err := http.DefaultClient.Do(req)
+	res, err := c.httpClient.Do(req)
 	return req, res, err
 }
 
