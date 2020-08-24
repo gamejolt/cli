@@ -1,5 +1,5 @@
 ## GJPush
-[![CircleCI](https://img.shields.io/circleci/project/github/RedSparr0w/node-csgo-parser.svg)](https://circleci.com/gh/gamejolt/cli/tree/master)
+[![CircleCI](https://img.shields.io/circleci/project/github/RedSparr0w/node-csgo-parser.svg)](https://circleci.com/gh/gamejolt/cli/tree/main)
 [![goreportcard](https://goreportcard.com/badge/github.com/gamejolt/cli)](https://goreportcard.com/report/github.com/gamejolt/cli)
 [![GitHub (pre-)release](https://img.shields.io/github/release/gamejolt/cli/all.svg)]()
 [![license](https://img.shields.io/github/license/gamejolt/cli.svg)]()
