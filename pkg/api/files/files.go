@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"io/ioutil"
+	"log"
 	"net/url"
 	"strconv"
 
@@ -12,8 +14,8 @@ import (
 	cliHttp "github.com/gamejolt/cli/pkg/http"
 	customIO "github.com/gamejolt/cli/pkg/io"
 
-	semver "gopkg.in/blang/semver.v3"
-	pb "gopkg.in/cheggaaa/pb.v1"
+	semver "github.com/blang/semver/v4"
+	pb "github.com/cheggaaa/pb/v3"
 )
 
 // GetResult is the result from the /files endpoint
@@ -88,7 +90,7 @@ func Add(client *cliHttp.SimpleClient, gameID, packageID int, releaseVersion *se
 		// Limit the upload speed in development for testing
 		reader = customIO.NewReader(reader)
 
-		bar.ShowBar = true
+		bar.SetTemplate(pb.Default)
 		reader = bar.NewProxyReader(reader)
 
 		return io.Copy(dst, reader)
@@ -104,6 +106,8 @@ func Add(client *cliHttp.SimpleClient, gameID, packageID int, releaseVersion *se
 	decoder := json.NewDecoder(res.Body)
 	result := &AddResult{}
 	if err = decoder.Decode(result); err != nil {
+		b, _ := ioutil.ReadAll(decoder.Buffered())
+		log.Println(string(b))
 		return nil, errors.New("Failed to upload file, the server returned a weird looking response")
 	}
 

@@ -13,8 +13,8 @@ import (
 	cliHttp "github.com/gamejolt/cli/pkg/http"
 	"github.com/gamejolt/cli/pkg/project"
 
-	semver "gopkg.in/blang/semver.v3"
-	pb "gopkg.in/cheggaaa/pb.v1"
+	semver "github.com/blang/semver/v4"
+	pb "github.com/cheggaaa/pb/v3"
 )
 
 // Client is a client through which http requests for the service api endpoints are made

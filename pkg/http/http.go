@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/gamejolt/cli/config"
 	customIO "github.com/gamejolt/cli/pkg/io"
 )
 
@@ -39,10 +40,14 @@ func (c *SimpleClient) send(req *http.Request) (*http.Request, *http.Response, e
 	return req, res, err
 }
 
-func (c *SimpleClient) getURL(urlStr string) (*url.URL, error) {
+func (c *SimpleClient) getURL(urlStr string, forUpload bool) (*url.URL, error) {
 	base, err := url.Parse(c.Base)
 	if err != nil {
 		return nil, err
+	}
+
+	if forUpload {
+		base.Host = config.UploadHost
 	}
 
 	u, err := url.Parse(urlStr)
@@ -53,8 +58,8 @@ func (c *SimpleClient) getURL(urlStr string) (*url.URL, error) {
 	return base.ResolveReference(u), nil
 }
 
-func (c *SimpleClient) buildQuery(urlStr string, get url.Values) (string, error) {
-	urlData, err := c.getURL(urlStr)
+func (c *SimpleClient) buildQuery(urlStr string, get url.Values, forUpload bool) (string, error) {
+	urlData, err := c.getURL(urlStr, forUpload)
 	if err != nil {
 		return "", err
 	}
@@ -76,7 +81,7 @@ func (c *SimpleClient) buildQuery(urlStr string, get url.Values) (string, error)
 
 // Get does an http get
 func (c *SimpleClient) Get(urlStr string, params url.Values) (*http.Request, *http.Response, error) {
-	urlStr, err := c.buildQuery(urlStr, params)
+	urlStr, err := c.buildQuery(urlStr, params, false)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -91,7 +96,7 @@ func (c *SimpleClient) Get(urlStr string, params url.Values) (*http.Request, *ht
 
 // Post does an http post of type application/json
 func (c *SimpleClient) Post(urlStr string, get url.Values, post interface{}) (*http.Request, *http.Response, error) {
-	urlStr, err := c.buildQuery(urlStr, get)
+	urlStr, err := c.buildQuery(urlStr, get, false)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -165,7 +170,7 @@ func (c *SimpleClient) uploadMultipartEntries(fileEntries []MultipartFileEntry, 
 
 // Multipart does a multipart file upload request of type multipart/form-data
 func (c *SimpleClient) Multipart(urlStr string, files map[string]string, get, post url.Values, writeFileCallback WriteFileFunc) (*http.Request, *http.Response, error) {
-	urlStr, err := c.buildQuery(urlStr, get)
+	urlStr, err := c.buildQuery(urlStr, get, true)
 	if err != nil {
 		return nil, nil, err
 	}

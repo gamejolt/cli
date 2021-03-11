@@ -3,7 +3,7 @@ jobs:
   build:
     working_directory: /go/src/github.com/gamejolt/cli
     docker:
-      - image: circleci/golang:1.9.3
+      - image: circleci/golang:1.15
     steps:
       - checkout
 

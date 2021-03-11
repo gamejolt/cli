@@ -5,7 +5,7 @@ import (
 	"io"
 	"time"
 
-	pb "gopkg.in/cheggaaa/pb.v1"
+	pb "github.com/cheggaaa/pb/v3"
 )
 
 // CopyCallback is a callback you can use to hook into a copy
@@ -72,26 +72,13 @@ func CopyWithSlowBar(dest io.Writer, src io.Reader, tooLong time.Duration, makeB
 		defer close(ch)
 
 		showBarOn := time.Now().Add(tooLong)
-		wantsBar := true
-		nextBarRefresh := time.Now()
 		cb := func(written int64) bool {
-			if time.Now().After(showBarOn) && wantsBar {
+			if time.Now().After(showBarOn) && bar == nil {
 				bar = makeBar()
-
-				if bar != nil {
-					bar.ManualUpdate = true
-					bar.Add64(written)
-					bar.Start()
-				}
-
-				wantsBar = false
 			}
 
-			if bar != nil && (written == bar.Total || time.Now().After(nextBarRefresh)) {
-				bar.Set64(written)
-				bar.Update()
-
-				nextBarRefresh = time.Now().Add(bar.RefreshRate)
+			if bar != nil {
+				bar.SetTotal(written)
 			}
 
 			return true

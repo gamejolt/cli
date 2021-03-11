@@ -14,9 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/howeyc/gopass"
-	homedir "github.com/mitchellh/go-homedir"
-
 	"github.com/gamejolt/cli/config"
 	"github.com/gamejolt/cli/pkg/api"
 	"github.com/gamejolt/cli/pkg/api/files"
@@ -27,10 +24,11 @@ import (
 	"github.com/gamejolt/cli/pkg/project"
 	"github.com/gamejolt/cli/pkg/ui"
 
-	semver "gopkg.in/blang/semver.v3"
-	pb "gopkg.in/cheggaaa/pb.v1"
-	color "gopkg.in/fatih/color.v1"
-	flags "gopkg.in/jessevdk/go-flags.v1"
+	semver "github.com/blang/semver/v4"
+	pb "github.com/cheggaaa/pb/v3"
+	color "github.com/fatih/color"
+	flags "github.com/jessevdk/go-flags"
+	"golang.org/x/term"
 )
 
 var inReader = bufio.NewReader(os.Stdin)
@@ -204,7 +202,7 @@ func getTokenFallback() (token string) {
 	}
 
 	// Attempt to get the token from the ~/.gj/credentials.json file
-	if dir, err := homedir.Dir(); err == nil {
+	if dir, err := os.UserHomeDir(); err == nil {
 		credentialsFile := filepath.Join(dir, ".gj", "credentials.json")
 		if bytes, err := ioutil.ReadFile(credentialsFile); err == nil {
 			creds := &Credentials{}
@@ -259,7 +257,7 @@ func md5File(path string, filesize int64) (string, error) {
 	_, err = _io.CopyWithSlowBar(hash, file, 2*time.Second, func() *pb.ProgressBar {
 		isSlow = true
 		ui.Info("Calculating checksum...\n")
-		return pb.New64(filesize).SetMaxWidth(80).SetUnits(pb.U_BYTES_DEC)
+		return pb.New64(filesize).SetMaxWidth(80).Set(pb.Bytes, true).Start()
 	})
 
 	if isSlow {
@@ -327,7 +325,7 @@ func Authenticate(token string) (*api.Client, *models.User, error) {
 		color.Unset()
 		var err error
 
-		tokenBytes, err := gopass.GetPasswd()
+		tokenBytes, err := term.ReadPassword(1)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -415,12 +413,10 @@ func GetGameRelease(apiClient *api.Client, releaseVersion string) (*semver.Versi
 // Upload uploads a file to a game
 func Upload(apiClient *api.Client, game *models.Game, gamePackage *models.GamePackage, releaseSemver *semver.Version, browserBuild bool, filepath string, filesize int64, checksum string, startByte, chunkSize int64) error {
 	// Create a new progress bar that starts from the given start byte
-	bar := pb.New64(filesize).SetMaxWidth(80).SetUnits(pb.U_BYTES_DEC)
+	bar := pb.New64(filesize).SetMaxWidth(80).Set(pb.Bytes, true).SetTemplateString("")
 	bar.Add64(startByte)
 
 	// The bar will be set to visible by the apiClient as soon as it knows it wouldn't print any errors right off the bat
-	bar.ShowBar = false
-	bar.ShowSpeed = true
 	bar.Start()
 	defer bar.Finish()
 

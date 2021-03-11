@@ -1,6 +1,6 @@
 package ui
 
-import "gopkg.in/fatih/color.v1"
+import "github.com/fatih/color"
 
 var (
 	// ErrorCol is the color for errors

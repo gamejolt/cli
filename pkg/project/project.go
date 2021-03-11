@@ -5,5 +5,5 @@ const (
 	Name = "gjpush"
 
 	// Version is the project version.
-	Version = "0.3.0"
+	Version = "0.4.0"
 )

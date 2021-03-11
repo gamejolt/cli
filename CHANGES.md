@@ -2,6 +2,14 @@
 All notable changes to this project will be documented in this file.  
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## 0.4.0
+- Upload through new upload servers.
+- Updated to Go 1.15 with Go Modules.
+- Updated almost all dependencies. Removed deprecated ones.
+
+## 0.3.0
+- Support overriding the chunk size uploads are split to to with a new `--chunk-size` option. Defaults to 10 MB.
+
 ## 0.2.0
 - Support passing token using a `GJPUSH_TOKEN` environment variable
 - Support passing token using a global credentials file located in the user's home directory.
