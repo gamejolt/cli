@@ -27,6 +27,7 @@ GJPush will prompt you for additionanl info it needs, but you can automate it by
 
 Advanced Options:
 --chunk-size=MB          How big should the chunks the CLI uploads be. Defaults to 10.
+--no-resume              Do not resume an existing upload. Start over if an upload already exists.
 ```
 
 1. __Token__ is your "password" to the tool, and can be provided to the tool in 3 ways:

@@ -2,6 +2,10 @@
 All notable changes to this project will be documented in this file.  
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## 0.5.0
+- Added `--no-resume` option to avoid resuming an existing upload. The upload will start over if an existing upload already exists.
+- Improved logging for many error cases
+
 ## 0.4.0
 - Upload through new upload servers.
 - Updated to Go 1.15 with Go Modules.
