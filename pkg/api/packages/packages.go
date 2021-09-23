@@ -4,10 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"net/url"
 	"strconv"
 
-	modelErrors "github.com/gamejolt/cli/pkg/api/errors"
+	apiErrors "github.com/gamejolt/cli/pkg/api/errors"
 	"github.com/gamejolt/cli/pkg/api/models"
 	cliHttp "github.com/gamejolt/cli/pkg/http"
 )
@@ -40,14 +41,18 @@ func Get(client *cliHttp.SimpleClient, packageID int, options *GetOptions) (*mod
 	}
 	defer res.Body.Close()
 
-	decoder := json.NewDecoder(res.Body)
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return nil, errors.New("Failed to get package: " + err.Error())
+	}
+
 	result := &GetResult{}
-	if err = decoder.Decode(result); err != nil {
-		return nil, errors.New("Failed to get package, the server returned a weird looking response")
+	if err = json.Unmarshal(body, result); err != nil {
+		return nil, errors.New("Failed to get package, the server returned a weird looking response" + string(body))
 	}
 
 	if result.Error != nil {
-		return nil, modelErrors.New(result.Error)
+		return nil, apiErrors.New(result.Error)
 	}
 	return result.Package, nil
 }

@@ -3,7 +3,7 @@
 package config
 
 // BaseURL is the base url for the service api
-const BaseURL = "http://development.gamejolt.com"
+const BaseURL = "https://development.gamejolt.com"
 
 // UploadHost is the hostname for the upload server
 const UploadHost = "development.gamejolt.com"

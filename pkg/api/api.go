@@ -75,6 +75,11 @@ func (c *Client) FileStatus(gameID int, size int64, checksum string) (*files.Get
 	return files.Get(c.client, gameID, size, checksum)
 }
 
+// FileRestart does a POST /files/add call to restart a file upload
+func (c *Client) FileRestart(gameID int, size int64, checksum string) (*files.RestartResult, error) {
+	return files.Restart(c.client, gameID, size, checksum)
+}
+
 // FileAdd does a POST /files/add call
 func (c *Client) FileAdd(gameID, packageID int, releaseVersion *semver.Version, isDownloadable bool, size int64, checksum string, forceRestart bool, filepath string, startByte, chunkSize int64, bar *pb.ProgressBar) (*files.AddResult, error) {
 	return files.Add(c.client, gameID, packageID, releaseVersion, isDownloadable, size, checksum, forceRestart, filepath, startByte, chunkSize, bar)

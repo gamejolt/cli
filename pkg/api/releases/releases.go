@@ -2,11 +2,13 @@ package releases
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/ioutil"
 	"net/url"
 	"strconv"
 
-	"github.com/gamejolt/cli/pkg/api/errors"
+	apiErrors "github.com/gamejolt/cli/pkg/api/errors"
 	"github.com/gamejolt/cli/pkg/api/models"
 	cliHttp "github.com/gamejolt/cli/pkg/http"
 )
@@ -45,18 +47,22 @@ func List(client *cliHttp.SimpleClient, releaseID int, options *ListBuildsOption
 
 	_, res, err := client.Get(fmt.Sprintf("releases/builds/%d", releaseID), getParams)
 	if err != nil {
-		return nil, err
+		return nil, errors.New("Failed to get release: " + err.Error())
 	}
 	defer res.Body.Close()
 
-	decoder := json.NewDecoder(res.Body)
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return nil, errors.New("Failed to get release: " + err.Error())
+	}
+
 	result := &ListBuildsResult{}
-	if err = decoder.Decode(result); err != nil {
-		return nil, err
+	if err = json.Unmarshal(body, result); err != nil {
+		return nil, errors.New("Failed to get release, the server returned a weird looking response: " + string(body))
 	}
 
 	if result.Error != nil {
-		return nil, errors.New(result.Error)
+		return nil, apiErrors.New(result.Error)
 	}
 	return result.Builds, nil
 }

@@ -5,11 +5,10 @@ import (
 	"errors"
 	"io"
 	"io/ioutil"
-	"log"
 	"net/url"
 	"strconv"
 
-	modelErrors "github.com/gamejolt/cli/pkg/api/errors"
+	apiErrors "github.com/gamejolt/cli/pkg/api/errors"
 	"github.com/gamejolt/cli/pkg/api/models"
 	cliHttp "github.com/gamejolt/cli/pkg/http"
 	customIO "github.com/gamejolt/cli/pkg/io"
@@ -23,6 +22,11 @@ type GetResult struct {
 	Status string        `json:"status"`
 	FileID int           `json:"file_id,omitempty"` // Returned for partial/in progress file uploads
 	Start  int64         `json:"start,omitempty"`
+	Error  *models.Error `json:"error,omitempty"`
+}
+
+type RestartResult struct {
+	FileID int           `json:"file_id,omitempty"` // The existing file upload that was restarted
 	Error  *models.Error `json:"error,omitempty"`
 }
 
@@ -54,14 +58,49 @@ func Get(client *cliHttp.SimpleClient, gameID int, size int64, checksum string) 
 	}
 	defer res.Body.Close()
 
-	decoder := json.NewDecoder(res.Body)
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return nil, errors.New("Failed to fetch current state of file on the server: " + err.Error())
+	}
+
 	result := &GetResult{}
-	if err = decoder.Decode(result); err != nil {
-		return nil, errors.New("Failed to fetch current state of file on the server, the server returned a weird looking response")
+	if err = json.Unmarshal(body, result); err != nil {
+		return nil, errors.New("Failed to fetch current state of file on the server, the server returned a weird looking response: " + string(body))
 	}
 
 	if result.Error != nil {
-		return nil, modelErrors.New(result.Error)
+		return nil, apiErrors.New(result.Error)
+	}
+	return result, nil
+}
+
+// Restart sends a new POST /files/add request that restarts an existing upload.
+func Restart(client *cliHttp.SimpleClient, gameID int, size int64, checksum string) (*RestartResult, error) {
+	getParams := url.Values(map[string][]string{
+		"game_id":  {strconv.Itoa(gameID)},
+		"size":     {strconv.FormatInt(size, 10)},
+		"checksum": {checksum},
+	})
+
+	_, res, err := client.Post("files/restart", getParams, nil)
+
+	if err != nil {
+		return nil, errors.New("Failed to restart file upload: " + err.Error())
+	}
+	defer res.Body.Close()
+
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return nil, errors.New("Failed to restart file upload: " + err.Error())
+	}
+
+	result := &RestartResult{}
+	if err = json.Unmarshal(body, result); err != nil {
+		return nil, errors.New("Failed to restart file upload, the server returned a weird looking response: " + string(body))
+	}
+
+	if result.Error != nil {
+		return nil, apiErrors.New(result.Error)
 	}
 	return result, nil
 }
@@ -103,16 +142,18 @@ func Add(client *cliHttp.SimpleClient, gameID, packageID int, releaseVersion *se
 	}
 	defer res.Body.Close()
 
-	decoder := json.NewDecoder(res.Body)
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return nil, errors.New("Failed to upload file: " + err.Error())
+	}
+
 	result := &AddResult{}
-	if err = decoder.Decode(result); err != nil {
-		b, _ := ioutil.ReadAll(decoder.Buffered())
-		log.Println(string(b))
-		return nil, errors.New("Failed to upload file, the server returned a weird looking response")
+	if err = json.Unmarshal(body, result); err != nil {
+		return nil, errors.New("Failed to upload file, the server returned a weird looking response: " + string(body))
 	}
 
 	if result.Error != nil {
-		return nil, modelErrors.New(result.Error)
+		return nil, apiErrors.New(result.Error)
 	}
 	return result, nil
 }

@@ -2,9 +2,11 @@ package games
 
 import (
 	"encoding/json"
+	"errors"
+	"io/ioutil"
 	"strconv"
 
-	"github.com/gamejolt/cli/pkg/api/errors"
+	apiErrors "github.com/gamejolt/cli/pkg/api/errors"
 	"github.com/gamejolt/cli/pkg/api/models"
 	cliHttp "github.com/gamejolt/cli/pkg/http"
 )
@@ -37,14 +39,18 @@ func Get(client *cliHttp.SimpleClient, gameID int) (*models.Game, error) {
 	}
 	defer res.Body.Close()
 
-	decoder := json.NewDecoder(res.Body)
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return nil, errors.New("Failed to fetch information about game: " + err.Error())
+	}
+
 	result := &GetResult{}
-	if err = decoder.Decode(result); err != nil {
-		return nil, err
+	if err = json.Unmarshal(body, result); err != nil {
+		return nil, errors.New("Failed to fetch information about game, the server returned a weird looking response: " + string(body))
 	}
 
 	if result.Error != nil {
-		return nil, errors.New(result.Error)
+		return nil, apiErrors.New(result.Error)
 	}
 	return result.Game, nil
 }
@@ -57,14 +63,18 @@ func List(client *cliHttp.SimpleClient) (*Games, error) {
 	}
 	defer res.Body.Close()
 
-	decoder := json.NewDecoder(res.Body)
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return nil, errors.New("Failed to list games: " + err.Error())
+	}
+
 	result := &ListResult{}
-	if err = decoder.Decode(result); err != nil {
-		return nil, err
+	if err = json.Unmarshal(body, result); err != nil {
+		return nil, errors.New("Failed to list games, the server returned a weird looking response: " + string(body))
 	}
 
 	if result.Error != nil {
-		return nil, errors.New(result.Error)
+		return nil, apiErrors.New(result.Error)
 	}
 	return result.Games, nil
 }

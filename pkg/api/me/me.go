@@ -3,8 +3,9 @@ package me
 import (
 	"encoding/json"
 	"errors"
+	"io/ioutil"
 
-	modelErrors "github.com/gamejolt/cli/pkg/api/errors"
+	apiErrors "github.com/gamejolt/cli/pkg/api/errors"
 	"github.com/gamejolt/cli/pkg/api/models"
 	cliHttp "github.com/gamejolt/cli/pkg/http"
 )
@@ -23,14 +24,18 @@ func Send(client *cliHttp.SimpleClient) (*models.User, error) {
 	}
 	defer res.Body.Close()
 
-	decoder := json.NewDecoder(res.Body)
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return nil, errors.New("Failed to authenticate: " + err.Error())
+	}
+
 	result := &Result{}
-	if err = decoder.Decode(result); err != nil {
-		return nil, errors.New("Failed to authenticate, the server returned a weird looking response")
+	if err = json.Unmarshal(body, result); err != nil {
+		return nil, errors.New("Failed to authenticate, the server returned a weird looking response: " + string(body))
 	}
 
 	if result.Error != nil {
-		return nil, modelErrors.New(result.Error)
+		return nil, apiErrors.New(result.Error)
 	}
 
 	return result.User, nil

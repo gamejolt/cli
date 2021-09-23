@@ -55,13 +55,29 @@ func main() {
 	if fileStatus.Status == "new" {
 		ui.Info("Starting a new upload ...\n")
 	} else if fileStatus.Status == "partial" {
-		ui.Info("Resuming the upload (File ID: %d) ...\n", fileStatus.FileID)
+		if opts.Advanced.NoResume {
+			ui.Info("Aborting existing upload (File ID: %d) ...\n", fileStatus.FileID)
+
+			_, err := apiClient.FileRestart(opts.GameID, filesize, checksum)
+			if err != nil {
+				ErrorAndExit("%s\n", err.Error())
+			}
+
+			ui.Info("Starting a new upload ...\n")
+		} else {
+			ui.Info("Resuming the upload (File ID: %d) ...\n", fileStatus.FileID)
+		}
 	} else if fileStatus.Status == "error" {
 		ui.Warn("There was an issue with the previous upload chunk, we have to start over :(\n")
 		ui.Info("Starting a new upload ...\n")
 	}
 
-	err = Upload(apiClient, game, gamePackage, releaseSemver, opts.IsBrowser, filepath, filesize, checksum, fileStatus.Start, chunkSize)
+	startByte := fileStatus.Start
+	if opts.Advanced.NoResume || fileStatus.Status == "error" {
+		startByte = 0
+	}
+
+	err = Upload(apiClient, game, gamePackage, releaseSemver, opts.IsBrowser, filepath, filesize, checksum, startByte, chunkSize)
 	if err != nil {
 		ErrorAndExit("%s\n", err.Error())
 	}
@@ -78,7 +94,8 @@ type Options struct {
 	ReleaseVersion string `short:"r" long:"release" value-name:"VERSION" description:"The release version to attach the build file to[1]"`
 	IsBrowser      bool   `short:"b" long:"browser" description:"Upload a browser build. By default uploads a desktop build."`
 	Advanced       struct {
-		ChunkSize int `long:"chunk-size" value-name:"MB" description:"How big should the chunks the CLI uploads be. Defaults to 10."`
+		ChunkSize int  `long:"chunk-size" value-name:"MB" description:"How big should the chunks the CLI uploads be. Defaults to 10."`
+		NoResume  bool `long:"no-resume" description:"Do not resume an existing upload. Start over if an upload already exists."`
 	} `group:"Advanced Options"`
 	Help    bool `short:"h" long:"help" description:"Show this help message"`
 	Version bool `short:"v" long:"version" description:"Display the version"`
